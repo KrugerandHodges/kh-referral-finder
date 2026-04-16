@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>K&H Referral Finder</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden}
+body{font-family:'Segoe UI',Arial,sans-serif;color:#333;display:flex;flex-direction:column}
+
+/* HEADER */
+#header{background:#7f1712;color:#fff;padding:10px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;box-shadow:0 2px 6px rgba(0,0,0,.3);min-height:52px}
+#hdr-sub{font-size:.58rem;opacity:.65;text-transform:uppercase;letter-spacing:1px;line-height:1}
+#header h1{font-size:1.05rem;font-weight:700;white-space:nowrap;line-height:1.2;margin-top:2px}
+#hdr-right{display:flex;align-items:center;gap:7px;margin-left:auto;flex-shrink:0}
+#total-count{font-size:.68rem;opacity:.8;white-space:nowrap}
+.hdr-btn{padding:7px 11px;border:none;border-radius:6px;font-weight:700;font-size:.74rem;cursor:pointer;white-space:nowrap;min-height:36px;touch-action:manipulation;position:relative}
+#sync-btn{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35)}
+#add-btn{background:#f9c423;color:#333}
+#sync-badge{display:none;position:absolute;top:-5px;right:-5px;background:#f44336;color:#fff;border-radius:50%;width:16px;height:16px;font-size:.55rem;font-weight:800;line-height:16px;text-align:center;pointer-events:none}
+.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sync-dot.ok{background:#4CAF50}.sync-dot.err{background:#f44336}
+.sync-dot.syncing{background:#f9c423;animation:pulse .8s infinite}.sync-dot.idle{background:#888}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* BANNERS */
+#changes-banner{background:#7f1712;color:#fff;padding:7px 16px;font-size:.75rem;font-weight:600;display:none;align-items:center;gap:10px;flex-shrink:0;cursor:pointer}
+#geocode-bar{background:#f9c423;padding:5px 14px;font-size:.72rem;color:#4d4d4d;font-weight:600;display:none;align-items:center;gap:10px;flex-shrink:0}
+#geocode-bar progress{flex:1;height:6px;accent-color:#7f1712}
+
+/* LAYOUT */
+#app{flex:1;display:flex;min-height:0;position:relative}
+#map{flex:1;z-index:1;min-height:0}
+
+/* DESKTOP */
+@media(min-width:769px){
+  #panel{width:340px;min-width:260px;background:#fff;display:flex;flex-direction:column;border-right:2px solid #e0e0e0;overflow:hidden;flex-shrink:0;order:-1}
+  #sheet-drag{display:none}
+  #controls{padding:11px 12px 8px;border-bottom:1px solid #e8e8e8;flex-shrink:0}
+  #results-section{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  #results-list{flex:1;overflow-y:auto;padding:4px 0;min-height:0}
+  #panel-resizer{flex-shrink:0;height:8px;background:#f0f0f0;cursor:ns-resize;display:flex;align-items:center;justify-content:center;border-top:1px solid #ddd;border-bottom:1px solid #ddd;user-select:none}
+  #panel-resizer:hover{background:#e0e0e0}
+  #panel-resizer::after{content:'';width:36px;height:3px;background:#bbb;border-radius:2px}
+  #msg-area{display:flex;flex-direction:column;flex-shrink:0;min-height:42px;overflow:hidden}
+}
+
+/* MOBILE */
+@media(max-width:768px){
+  #panel{position:absolute;bottom:0;left:0;right:0;z-index:500;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -4px 24px rgba(0,0,0,.18);display:flex;flex-direction:column;height:52vh;transition:height .28s cubic-bezier(.4,0,.2,1);overflow:hidden;touch-action:none;max-height:92vh}
+  #sheet-drag{flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:8px 14px 5px;border-bottom:1px solid #eee;cursor:grab;user-select:none}
+  #sheet-handle{width:44px;height:5px;background:#ddd;border-radius:3px;margin-bottom:7px}
+  #sheet-peek{display:flex;align-items:center;gap:8px;width:100%}
+  #sheet-peek-label{font-size:.8rem;font-weight:700;color:#7f1712;flex:1}
+  #sheet-peek-count{font-size:.7rem;color:#888}
+  #controls{padding:9px 12px 7px;border-bottom:1px solid #e8e8e8;flex-shrink:0;overflow-x:hidden}
+  #results-section{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+  #results-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 0;min-height:0}
+  #panel-resizer{display:none}
+  #msg-area{display:flex;flex-direction:column;flex-shrink:0;min-height:42px}
+  #autocomplete-list{bottom:100%;top:auto!important;border-top:2px solid #ddd;border-bottom:none;border-radius:6px 6px 0 0}
+}
+
+/* CONTROLS */
+#who-wrap{margin-bottom:9px;display:flex;align-items:center;gap:7px;background:#fff8f0;border-radius:6px;padding:6px 9px;border:1px solid #f9c423}
+#who-label{font-size:.69rem;font-weight:700;color:#7f1712;white-space:nowrap}
+#who-select{flex:1;border:none;background:transparent;font-size:.8rem;font-weight:600;color:#333;outline:none;cursor:pointer;padding:0}
+.ctrl-label{font-size:.67rem;font-weight:700;text-transform:uppercase;color:#7f1712;margin-bottom:4px;letter-spacing:.5px}
+.type-btns{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+@media(max-width:768px){.type-btns{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;scrollbar-width:none}.type-btns::-webkit-scrollbar{display:none}}
+.type-btn{padding:5px 11px;border:2px solid #ddd;border-radius:16px;font-size:.7rem;font-weight:600;cursor:pointer;background:#fff;color:#555;white-space:nowrap;flex-shrink:0;min-height:34px;touch-action:manipulation;transition:all .15s}
+.type-btn.active{background:#7f1712;color:#fff;border-color:#7f1712}
+.type-btn:hover:not(.active){border-color:#7f1712;color:#7f1712}
+#subfilter-wrap{margin-bottom:8px;display:none}
+#subfilter{width:100%;padding:7px 9px;border:2px solid #ddd;border-radius:6px;font-size:.78rem;outline:none;background:#fff;color:#333;min-height:38px}
+#ref-search-wrap{margin-bottom:8px;position:relative}
+#ref-search-input{width:100%;padding:7px 30px 7px 9px;border:2px solid #ddd;border-radius:6px;font-size:.78rem;outline:none;min-height:38px}
+#ref-search-input:focus,#addr-input:focus,#subfilter:focus{border-color:#7f1712}
+#ref-search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);background:none;border:none;color:#bbb;cursor:pointer;font-size:.95rem;display:none;padding:4px;min-width:28px;min-height:28px}
+.addr-wrap{position:relative;margin-bottom:2px}
+.addr-row{display:flex;gap:5px}
+#addr-input{flex:1;padding:7px 9px;border:2px solid #ddd;border-radius:6px;font-size:.78rem;outline:none;min-height:38px}
+#addr-btn{padding:7px 12px;background:#7f1712;color:#fff;border:none;border-radius:6px;font-size:.78rem;font-weight:700;cursor:pointer;min-height:38px;touch-action:manipulation}
+#addr-btn:disabled{opacity:.45;cursor:not-allowed}
+#clear-btn{padding:7px 10px;background:#f0f0f0;color:#666;border:none;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;min-height:38px;display:none;white-space:nowrap;touch-action:manipulation}
+#autocomplete-list{position:absolute;top:100%;left:0;right:0;background:#fff;border:2px solid #ddd;border-top:none;border-radius:0 0 6px 6px;z-index:5000;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;max-height:220px;overflow-y:auto}
+.ac-item{padding:8px 10px;cursor:pointer;border-bottom:1px solid #f0f0f0;min-height:44px;display:flex;flex-direction:column;justify-content:center}
+.ac-item:active{background:#fef9ee}
+.ac-main{font-size:.76rem;font-weight:600;color:#222}
+.ac-sub{font-size:.67rem;color:#888;margin-top:1px}
+#addr-status{font-size:.67rem;color:#555;margin-top:3px;min-height:13px;line-height:1.5;font-weight:500}
+#who-hint{font-size:.67rem;color:#c0392b;margin-top:3px;display:none;font-weight:600}
+
+/* RESULTS */
+#results-header{padding:6px 12px;font-size:.67rem;font-weight:700;text-transform:uppercase;color:#7f1712;letter-spacing:.5px;border-bottom:1px solid #eee;flex-shrink:0;background:#fafafa;display:flex;justify-content:space-between;align-items:center}
+#results-count{color:#888;font-weight:400;text-transform:none;font-size:.65rem}
+#no-refs-msg{display:none;background:#fff3cd;border-left:3px solid #f9c423;padding:7px 11px;margin:5px 8px;border-radius:0 5px 5px 0;font-size:.73rem;color:#856404;font-weight:600;flex-shrink:0}
+#no-results{display:none;padding:18px 12px;text-align:center;color:#aaa;font-size:.78rem}
+
+/* RESULT ITEMS */
+.result-item{padding:8px 12px;border-bottom:1px solid #f0f0f0;transition:background .1s}
+.result-item.r-nearest{background:#fdf3f3;border-left:3px solid #7f1712}
+.result-item.r-top5{background:#fff8e1;border-left:3px solid #f9c423}
+.result-item.r-search-match{background:#f0f8ff;border-left:3px solid #2196F3}
+.result-top{display:flex;gap:7px;align-items:flex-start;cursor:pointer;padding:2px 0}
+.result-rank{font-size:.61rem;font-weight:800;color:#fff;background:#7f1712;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
+.result-rank.gold{background:#f9c423;color:#333}
+.result-info{flex:1;min-width:0}
+.result-name{font-size:.8rem;font-weight:700;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pref-star{color:#f9c423;margin-right:3px;font-size:.85rem}
+.result-doctor{font-size:.71rem;color:#7f1712;font-style:italic}
+.result-meta{font-size:.68rem;color:#888;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result-dist{font-size:.66rem;font-weight:700;color:#7f1712;margin-top:1px}
+.result-actions{display:flex;align-items:center;gap:5px;margin-top:6px;flex-wrap:wrap}
+.expand-hint{font-size:.61rem;color:#bbb;margin-top:3px}
+.pref-badge{font-size:.67rem;padding:5px 10px;border-radius:10px;cursor:pointer;border:none;font-family:inherit;white-space:nowrap;font-weight:700;min-height:34px;touch-action:manipulation}
+.pref-badge.on{background:#f9c423;color:#333}.pref-badge.off{background:#f0f0f0;color:#aaa;border:1px solid #ddd}
+.massage-badge{font-size:.67rem;padding:5px 10px;border-radius:10px;cursor:pointer;border:none;font-family:inherit;white-space:nowrap;font-weight:600;min-height:34px;touch-action:manipulation}
+.massage-badge.on{background:#e91e8c;color:#fff}.massage-badge.off{background:#f0f0f0;color:#999;border:1px solid #ddd}
+.action-btn{background:none;border:1px solid #e0e0e0;color:#888;cursor:pointer;font-size:.67rem;padding:5px 9px;border-radius:6px;font-family:inherit;min-height:34px;touch-action:manipulation}
+.result-notes{display:none;margin-top:5px}
+.notes-detail{font-size:.72rem;color:#555;padding:7px 9px;background:#f9f9f9;border-radius:5px;border-left:3px solid #f9c423;line-height:1.65}
+.nd-row{margin-bottom:3px}
+.nd-label{font-weight:700;color:#7f1712}
+.team-note-box{margin-top:5px;display:none}
+.team-note-area{width:100%;min-height:52px;padding:7px 9px;border:2px solid #f9c423;border-radius:5px;font-size:.76rem;font-family:inherit;outline:none;resize:vertical;background:#fffef5}
+.team-note-actions{display:flex;gap:6px;margin-top:5px}
+.note-save-btn{padding:7px 14px;background:#7f1712;color:#fff;border:none;border-radius:5px;font-size:.74rem;font-weight:700;cursor:pointer;min-height:38px}
+.note-cancel-btn{padding:7px 12px;background:#f0f0f0;color:#555;border:none;border-radius:5px;font-size:.74rem;cursor:pointer;min-height:38px}
+.team-note-display{margin-top:4px;font-size:.72rem;background:#fffef5;border:1px solid #f9c423;border-radius:5px;padding:6px 8px;color:#555;line-height:1.5}
+.tnd-label{font-size:.64rem;font-weight:700;color:#c8a200;text-transform:uppercase;margin-bottom:2px}
+
+/* MESSAGE */
+#msg-strip{background:#fafafa;padding:8px 12px;display:flex;align-items:center;cursor:pointer;gap:8px;user-select:none;min-height:42px;touch-action:manipulation;border-top:2px solid #e0e0e0;flex-shrink:0;transition:background .15s}
+#msg-strip:hover{background:#f0f0f0}
+#msg-strip-label{font-size:.71rem;font-weight:700;color:#7f1712;flex:1}
+#msg-strip-hint{font-size:.63rem;color:#bbb;flex-shrink:0}
+/* Message Modal */
+.pick-item{display:flex;align-items:center;gap:7px;padding:8px 10px;border-radius:7px;font-size:.76rem;margin-bottom:4px;background:#f9f9f9;border:1px solid #e8e8e8;cursor:pointer;min-height:40px}
+.pick-item.pick-pref{background:#fffbf0;border-color:#f9c423}
+.pick-item input{accent-color:#7f1712;width:16px;height:16px;flex-shrink:0}
+.pick-name{font-weight:600;color:#222;overflow:hidden;text-overflow:ellipsis;flex:1}
+.pick-dist{color:#999;font-size:.68rem;flex-shrink:0;white-space:nowrap}
+.pick-star{color:#f9c423;font-size:.85rem;flex-shrink:0}
+#msg-box{width:100%;padding:10px;border:2px solid #ddd;border-radius:8px;font-size:.82rem;line-height:1.6;resize:vertical;font-family:inherit;outline:none;min-height:200px}
+#msg-box:focus{border-color:#7f1712}
+#copy-btn{width:100%;padding:12px;background:#f9c423;color:#333;border:none;border-radius:8px;font-weight:700;font-size:.85rem;cursor:pointer;min-height:46px;touch-action:manipulation;margin-top:2px}
+#copy-btn.copied{background:#4caf50;color:#fff}
+
+/* POPUP */
+.leaflet-popup-content{min-width:210px;font-size:.8rem;line-height:1.55}
+.popup-tag{display:inline-block;background:#7f1712;color:#fff;font-size:.61rem;padding:1px 6px;border-radius:10px;margin-bottom:4px}
+.popup-massage{display:inline-block;background:#e91e8c;color:#fff;font-size:.61rem;padding:1px 6px;border-radius:10px;margin-bottom:4px;margin-left:4px}
+.popup-pref{display:inline-block;background:#f9c423;color:#333;font-size:.61rem;padding:1px 6px;border-radius:10px;margin-bottom:4px;margin-left:4px;font-weight:700}
+.popup-name{font-weight:700;color:#7f1712;font-size:.88rem}
+.popup-doctor{font-style:italic;color:#555}
+.popup-row{margin-top:3px;color:#444}
+.popup-notes{font-size:.7rem;color:#888;margin-top:4px;border-top:1px solid #eee;padding-top:4px}
+.popup-actions{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+
+/* MODAL */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;box-shadow:0 -4px 30px rgba(0,0,0,.2);transform:translateY(30px);transition:transform .25s}
+.modal-overlay.open .modal{transform:translateY(0)}
+@media(min-width:769px){.modal-overlay{align-items:center}.modal{border-radius:12px;transform:translateY(16px);max-height:88vh}}
+.modal-header{background:#7f1712;color:#fff;padding:13px 16px;border-radius:16px 16px 0 0;display:flex;align-items:center}
+@media(min-width:769px){.modal-header{border-radius:12px 12px 0 0}}
+.modal-header h2{font-size:.92rem;font-weight:700;flex:1}
+.modal-close{background:rgba(255,255,255,.2);border:none;color:#fff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.modal-body{padding:16px}
+.modal-tabs{display:flex;border-bottom:2px solid #eee;margin-bottom:14px}
+.modal-tab{padding:6px 14px;font-size:.75rem;font-weight:600;cursor:pointer;color:#888;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.modal-tab.active{color:#7f1712;border-bottom-color:#7f1712}
+.tab-pane{display:none}.tab-pane.active{display:block}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.form-grid .full{grid-column:1/-1}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg label{font-size:.67rem;font-weight:700;color:#7f1712;text-transform:uppercase;letter-spacing:.4px}
+.fg input,.fg select,.fg textarea{padding:7px 9px;border:2px solid #ddd;border-radius:6px;font-size:.79rem;font-family:inherit;outline:none;width:100%;background:#fff;color:#333}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:#7f1712}
+.fg textarea{min-height:52px;resize:vertical}
+.req{color:#c0392b}
+.form-actions{display:flex;gap:7px;margin-top:12px}
+.btn-primary{flex:1;padding:8px;background:#7f1712;color:#fff;border:none;border-radius:6px;font-weight:700;font-size:.81rem;cursor:pointer}
+.btn-secondary{padding:8px 15px;background:#f0f0f0;color:#555;border:none;border-radius:6px;font-weight:600;font-size:.81rem;cursor:pointer}
+.form-status{font-size:.71rem;margin-top:5px;min-height:15px}
+.form-status.ok{color:#4CAF50;font-weight:600}.form-status.err{color:#c0392b;font-weight:600}
+
+/* Doctor rows */
+.doctor-row{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;margin-bottom:6px}
+.doctor-row input{padding:6px 9px;border:2px solid #ddd;border-radius:6px;font-size:.78rem;font-family:inherit;outline:none;background:#fff;color:#333}
+.doctor-row input:focus{border-color:#7f1712}
+.remove-doc-btn{padding:6px 10px;background:none;border:1px solid #ddd;border-radius:6px;color:#888;cursor:pointer;font-size:.8rem;min-height:36px;white-space:nowrap}
+.remove-doc-btn:hover{border-color:#7f1712;color:#7f1712}
+.add-doc-btn{font-size:.72rem;color:#7f1712;background:none;border:1px dashed #7f1712;border-radius:6px;padding:5px 10px;cursor:pointer;margin-top:2px;width:100%;font-family:inherit}
+.add-doc-btn:hover{background:#fff5f5}
+
+/* Manage tab */
+#manage-list{max-height:320px;overflow-y:auto}
+.mi{display:flex;align-items:flex-start;gap:8px;padding:9px;border-bottom:1px solid #f0f0f0}
+.mi:last-child{border-bottom:none}
+.mi-info{flex:1;min-width:0}
+.mi-name{font-weight:700;color:#222;font-size:.79rem}
+.mi-meta{color:#888;font-size:.69rem;margin-top:1px}
+.mi-type{font-size:.59rem;padding:2px 7px;border-radius:10px;font-weight:700;background:#7f1712;color:#fff;white-space:nowrap;flex-shrink:0}
+.mi-del{background:none;border:1px solid #ddd;color:#888;cursor:pointer;font-size:.7rem;padding:3px 8px;border-radius:4px;flex-shrink:0}
+.mi-del:hover{background:#7f1712;color:#fff;border-color:#7f1712}
+.no-added{padding:28px;text-align:center;color:#aaa;font-size:.81rem}
+
+/* sync modal */
+.sync-btn-row{display:flex;gap:8px;margin-top:10px}
+.sync-action-btn{flex:1;padding:9px;border:none;border-radius:6px;font-weight:700;font-size:.78rem;cursor:pointer}
+
+#results-list::-webkit-scrollbar,#referral-picks::-webkit-scrollbar,#manage-list::-webkit-scrollbar{width:3px}
+#results-list::-webkit-scrollbar-track,#referral-picks::-webkit-scrollbar-track,#manage-list::-webkit-scrollbar-track{background:#f1f1f1}
+#results-list::-webkit-scrollbar-thumb,#referral-picks::-webkit-scrollbar-thumb,#manage-list::-webkit-scrollbar-thumb{background:#ccc;border-radius:3px}
+.spinner{display:inline-block;width:12px;height:12px;border:2px solid #7f1712;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="header">
+  <div>
+    <div id="hdr-sub">Kruger &amp; Hodges</div>
+    <h1>Referral Finder</h1>
+  </div>
+  <div id="hdr-right">
+    <div class="sync-dot idle" id="sync-dot"></div>
+    <span id="total-count"></span>
+    <button class="hdr-btn" id="add-btn" onclick="openModal('add')">+ Add Referral</button>
+    <button class="hdr-btn" id="sync-btn" onclick="openModal('sync')">
+      ⚙ Sync<span id="sync-badge"></span>
+    </button>
+  </div>
+</div>
+
+<div id="changes-banner" onclick="pullAndDismiss()">
+  🔔 Your team has made updates — <span style="text-decoration:underline;margin-left:4px">tap to pull</span>
+  <span style="margin-left:auto;opacity:.7;font-size:.9rem" onclick="dismissBanner(event)">✕</span>
+</div>
+<div id="geocode-bar">
+  <div class="spinner"></div>
+  <span id="geocode-msg">Geocoding addresses — first load only, cached forever</span>
+  <progress id="geocode-progress" value="0" max="100"></progress>
+</div>
+
+<div id="app">
+  <div id="map"></div>
+  <div id="panel">
+    <div id="sheet-drag">
+      <div id="sheet-handle"></div>
+      <div id="sheet-peek"><span id="sheet-peek-label">Referral Finder</span><span id="sheet-peek-count"></span></div>
+    </div>
+    <div id="controls">
+      <div id="who-wrap">
+        <span id="who-label">Searching as:</span>
+        <select id="who-select">
+          <option value="">— Select your name —</option>
+          <option>Ashley</option><option>Brandi</option><option>Brooke</option>
+          <option>Hanien</option><option>Jessica</option><option>Josh</option>
+          <option>Kinsley</option><option>McKayla K</option><option>McKayla W</option>
+          <option>Micha</option><option>Nicole</option><option>Nils</option>
+          <option>Sam</option><option>Sarah</option><option>Savannah</option>
+          <option>Scott</option><option>Stephanie</option>
+        </select>
+      </div>
+      <div class="ctrl-label">Filter by Type</div>
+      <div class="type-btns">
+        <button class="type-btn active" data-type="All">All</button>
+        <button class="type-btn" data-type="Chiropractor">Chiropractors</button>
+        <button class="type-btn" data-type="Doctor">Doctors</button>
+        <button class="type-btn" data-type="IME Doctor">IME</button>
+        <button class="type-btn" data-type="Attorney">Attorneys</button>
+        <button class="type-btn" data-type="MT">💆 Has MT</button>
+      </div>
+      <div id="subfilter-wrap">
+        <div class="ctrl-label" id="subfilter-label">Specialty</div>
+        <select id="subfilter" onchange="onSubChange()"><option value="">— All —</option></select>
+      </div>
+      <div class="ctrl-label">🔍 Search Referrals</div>
+      <div id="ref-search-wrap">
+        <input id="ref-search-input" type="text" placeholder="Search by name, doctor, specialty..." autocomplete="off"/>
+        <button id="ref-search-clear" onclick="clearRefSearch()">✕</button>
+      </div>
+      <div class="ctrl-label" style="margin-top:8px">📍 Find Closest To</div>
+      <div class="addr-wrap">
+        <div class="addr-row">
+          <input id="addr-input" type="text" placeholder="220 S Third St, Hamilton, OH 45011" autocomplete="off"/>
+          <button id="addr-btn" disabled>Find</button>
+          <button id="clear-btn" onclick="clearSearch()">✕ Clear</button>
+        </div>
+        <div id="autocomplete-list"></div>
+      </div>
+      <div id="who-hint">⚠ Select your name above first</div>
+      <div id="addr-status"></div>
+    </div>
+    <div id="results-section">
+      <div id="results-header">
+        <span id="results-label">Referrals</span>
+        <span id="results-count"></span>
+      </div>
+      <div id="no-refs-msg">⚠️ No referrals within an estimated 20-minute drive.</div>
+      <div id="no-results">No mapped referrals found.</div>
+      <div id="results-list"></div>
+    </div>
+    <div id="panel-resizer"></div>
+    <div id="msg-area">
+      <div id="msg-strip" onclick="openMsgModal()">
+        <span id="msg-strip-label">📋 Recommendation Message</span>
+        <span id="msg-strip-hint">Search an address first</span>
+        <span style="font-size:.8rem;color:#888;flex-shrink:0">⤢</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN MODAL -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">Add Referral</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+
+// ── CONSTANTS ────────────────────────────────────────────────
+const BASE_DATA = [{"type": "Chiropractor", "office": "Akron Spine and Rehab (Prestige)", "doctor": "", "phone": "330-836-3333", "address": "770 Howe Ave", "city": "Cuyahoga Falls", "state": "OH", "county": "Cuyahoga", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b0"}, {"type": "Chiropractor", "office": "Alinea Performance", "doctor": "Andrew Gillihan", "phone": "513-434-3669", "address": "7227 Montgomery Road Ste C", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "", "notes": "Physical Therapy and will treat on Lien, DPT, Crossfit Trainer, Takes insurance", "extra": "Splits: ", "hasmassage": false, "_bid": "b1"}, {"type": "Chiropractor", "office": "Bokeno Chiropractic", "doctor": "Daniel Bokeno", "phone": "513-822-9780", "address": "1050 Millville Avenue", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b2"}, {"type": "Chiropractor", "office": "Cardinal Medical Services (Prestige)", "doctor": "", "phone": "330-526-6146", "address": "4433 38th Street NW ", "city": "Canton", "state": "OH", "county": "Stark", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b3"}, {"type": "Chiropractor", "office": "Chiropractic Associates", "doctor": "Matthew Houchin", "phone": "513-422-7776", "address": "2050 Cincinnati Dayton Road", "city": "Middletown", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b4"}, {"type": "Chiropractor", "office": "Chiropractic Wellness Center", "doctor": "Brian Nobbs", "phone": "513-896-9355", "address": "830 S Erie Blvd", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b5"}, {"type": "Chiropractor", "office": "Court House Chiropractic", "doctor": "Roman Matthews", "phone": "740-333-9000", "address": "1135 Leesburg Ave", "city": "Washington Court House", "state": "OH", "county": "Fayette", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b6"}, {"type": "Chiropractor", "office": "Eastshore Medical Services (Prestige)", "doctor": "", "phone": "216-302-1500", "address": "26300 Euclid Ave, Ste 333", "city": "Euclid", "state": "OH", "county": "Cuyahoga", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b7"}, {"type": "Chiropractor", "office": "Emergency Chiropractic of Lima", "doctor": "", "phone": "419-224-8007", "address": "750 W High street, STE 200", "city": "Lima", "state": "OH", "county": "Allen", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b8"}, {"type": "Chiropractor", "office": "Evans Chiropractic", "doctor": "", "phone": "513-330-5462", "address": "6600 Dixie Highway, Unit L ", "city": "Fairfield", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b9"}, {"type": "Chiropractor", "office": "Fick Chiropractic", "doctor": "", "phone": "513-851-8686", "address": "I-275 & Route 4, 415 Glensprings Drive, Ste 100", "city": "Cincinnati", "state": "OH", "county": "", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b10"}, {"type": "Chiropractor", "office": "Fisher Chiropractic", "doctor": "Travis Fisher", "phone": "513-724-1600", "address": "331 S 5th St", "city": "Williamsburg", "state": "OH", "county": "Clermont ", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b11"}, {"type": "Chiropractor", "office": "Jewell Chiropractic", "doctor": "Dr Andrea Jewell", "phone": "513-400-2019", "address": "8087 Cincinnati Dayton Road B", "city": "West Chester", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b12"}, {"type": "Doctor", "office": "Laura Arnold DDS", "doctor": "Laura Arnold", "phone": "513-877-6654", "address": "518 Park Avenue", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Dentist", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b13"}, {"type": "Chiropractor", "office": "Living Harmony Center", "doctor": "Morgan Skordos", "phone": "513-727-2540", "address": "5900 Long Meadow Drive", "city": "Middletown", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b14"}, {"type": "Chiropractor", "office": "Lorain Chiropractic (Prestige)", "doctor": "", "phone": "440-366-0042", "address": "1100 North Abbe Road, Ste C", "city": "Elyria", "state": "OH", "county": "Lorain", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b15"}, {"type": "Chiropractor", "office": "Miklos Center for Health and Wellness", "doctor": "", "phone": "440-967-5545", "address": "440 Liberty Ave #1910", "city": "Vermilion", "state": "OH", "county": "Lorain", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b16"}, {"type": "Chiropractor", "office": "Peak Preformance Chiropractic", "doctor": "", "phone": "513-916-3377", "address": "5225 Morning Sun Road, Suite C", "city": "Oxford", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b17"}, {"type": "Chiropractor", "office": "Pickaway Chiropractic", "doctor": "", "phone": "740-474-5352", "address": "778 N Court Street", "city": "Circleville", "state": "OH", "county": "Pickaway", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b18"}, {"type": "Chiropractor", "office": "Pike Therapy Center", "doctor": "", "phone": "937-236-1705", "address": "7391 Brandt Pike Ste C", "city": "Dayton", "state": "OH", "county": "Montgomery", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b19"}, {"type": "Chiropractor", "office": "Premier Chiropractic", "doctor": "Nick Murtland", "phone": "513-779-2400", "address": "7846 Cox Road", "city": "West Chester", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b20"}, {"type": "Chiropractor", "office": "Prestige Chiropractic", "doctor": "", "phone": "937-660-4789", "address": "8 Prestige Plaza Drive, Ste 110", "city": "Miamisburg", "state": "OH", "county": "Montgomery", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b21"}, {"type": "Chiropractor", "office": "Rebound Chiropractic and Wellness", "doctor": "", "phone": "513-863-0464", "address": "5088 Pleasant Avenue", "city": "Fairfield", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b22"}, {"type": "Chiropractor", "office": "RevitaLIFE Wellness Center", "doctor": "Dr Joseph Latona", "phone": "740-406-1709", "address": "108 N. Hinde Street", "city": "Washington Court House", "state": "OH", "county": "Fayette ", "specialty": "", "notes": "Good about referring for MRIs, NP, and Massage therapy in the same building", "extra": "Splits: ", "hasmassage": true, "_bid": "b23"}, {"type": "Chiropractor", "office": "Rockside Spine Center (Prestige)", "doctor": "", "phone": "216-447-9704", "address": "6500 Rockside Road, Ste150", "city": "Independence", "state": "OH", "county": "Cuyahoga", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b24"}, {"type": "Chiropractor", "office": "Rohlfs Chiropractic Care of Wilmington", "doctor": "Eric Mersch", "phone": "513-354-3800", "address": "720 Elm Street", "city": "Wilmington", "state": "OH", "county": "Clinton", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b25"}, {"type": "Chiropractor", "office": "Schmerge Chiropractic LLC", "doctor": "", "phone": "937-548-4406", "address": "830 E Main Street", "city": "Greenville", "state": "OH", "county": "Hancock", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b26"}, {"type": "Chiropractor", "office": "Tri-State Spine and Neuromuscular Associates", "doctor": "Shapiro", "phone": "513-791-5548", "address": "440 Ray Norris Drive", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b27"}, {"type": "Chiropractor", "office": "Tylersville Rd Chiropractic & Rehab", "doctor": "Dr. Cord", "phone": "513-816-7519", "address": "3501 Tylersville Road", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b28"}, {"type": "Chiropractor", "office": "Valentine Chiropractic", "doctor": "Louis Valentine", "phone": "513-788-7246", "address": "4015 Executive Park Drive #110", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b29"}, {"type": "Chiropractor", "office": "Wells Chiropractic", "doctor": "", "phone": "513-522-3600", "address": "8035 Hamilton Ave", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b30"}, {"type": "Chiropractor", "office": "Western Hills Chiropractic", "doctor": "Robert Dhaliwal", "phone": "513-251-2273", "address": "5948 Glenway Ave", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b31"}, {"type": "Chiropractor", "office": "Westgate Spine & Rehab (Prestige)", "doctor": "", "phone": "419-536-2222", "address": "3450 West Central Ave, Ste 136", "city": "Toledo", "state": "OH", "county": "Lucas", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b32"}, {"type": "Chiropractor", "office": "White Pond Spine & Injury (Prestige)", "doctor": "", "phone": "330-441-4605", "address": "755 White Pond Drive, Ste 402", "city": "Akron", "state": "OH", "county": "Summit", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b33"}, {"type": "Chiropractor", "office": "Youngstown Spine Center (Prestige)", "doctor": "", "phone": "937-660-4789", "address": "5500 Market Street, Unit 90", "city": "Youngstown", "state": "OH", "county": "Mahoning", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b34"}, {"type": "Chiropractor", "office": "Vandalia Spine Center", "doctor": "", "phone": "937-741-8282", "address": "1 E National Road #300", "city": "Vandalia", "state": "OH", "county": "Montgomery", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b35"}, {"type": "Chiropractor", "office": "Acore Medical", "doctor": "Dr Z", "phone": "614-725-1060", "address": "1495 Morse Road, Ste 101", "city": "Columbus", "state": "OH", "county": "Franklin", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b36"}, {"type": "Chiropractor", "office": "Queen City Chiropractic", "doctor": "Dr Ellis", "phone": "513-772-2100", "address": "110 Boggs Lane, Ste 165", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b37"}, {"type": "Chiropractor", "office": "Prime Chiropractic", "doctor": "Dr Hadzima", "phone": "419-930-6607", "address": "23811 Chagrin Blvd, Ste 310", "city": "Beechwood", "state": "OH", "county": "Cuyahoga", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b38"}, {"type": "Chiropractor", "office": "Thrive Chiropractic", "doctor": "Dr Haggenjos", "phone": "513-723-1190", "address": "3071 Madison Road", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b39"}, {"type": "Chiropractor", "office": "Elevate chiropractic- Jacob Harshfield", "doctor": "", "phone": "", "address": "190 reynolds Ave Bellefontaine, Ohio 43311", "city": "Bellefontaine", "state": "OH", "county": "", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b40"}, {"type": "Chiropractor", "office": "Creek chiropractic- Brian Briggs", "doctor": "", "phone": "", "address": "1911 N Fairfield Rd suite 230 Beavercreek, Ohio 45432", "city": "Beavercreek", "state": "OH", "county": "", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b41"}, {"type": "Chiropractor", "office": "WCH Chiropractic health and wellness", "doctor": "", "phone": "", "address": "1209 Columbus Ave WCH, Ohio 43160", "city": "", "state": "OH", "county": "", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b42"}, {"type": "Chiropractor", "office": "Revive health & injury", "doctor": "", "phone": "", "address": "333 n limestone st #101 Springfield, Ohio 45503", "city": "", "state": "OH", "county": "", "specialty": "", "notes": "", "extra": "Splits: ", "hasmassage": false, "_bid": "b43"}, {"type": "Doctor", "office": "Dr. James Apesos", "doctor": "James Apesos", "phone": "937-435-0031", "address": "5441 Far Hills Avenue ", "city": "Dayton", "state": "OH", "county": "Montgomery", "specialty": "Scar Doctor", "notes": "Cosmetic Surgery", "extra": "", "_bid": "b44"}, {"type": "Doctor", "office": "Dr Robert Lewis", "doctor": "Robert Lewis", "phone": "330-967-4224", "address": "4139 Boardman-Canfield Road Suite 2", "city": "Canfield ", "state": "OH", "county": "", "specialty": "Scar Doctor", "notes": "As of December 2023 - $1,000 per revision", "extra": "", "_bid": "b45"}, {"type": "Doctor", "office": "Michael L. Hoops, M.D.", "doctor": "Michael Hoops", "phone": "423-472-1996", "address": "597 Church Street NE", "city": "Cleveland TN", "state": "OH", "county": "", "specialty": "Scar dr ", "notes": "Does not do picture-based opinions, has to see them in person ", "extra": "", "_bid": "b46"}, {"type": "Doctor", "office": "Merritt S. Oleski", "doctor": "Merritt Oleski", "phone": "513-671-7246", "address": "1325 E Kemper Road #100", "city": "Springdale", "state": "OH", "county": "", "specialty": "", "notes": "Neuropsychologist", "extra": "", "_bid": "b47"}, {"type": "Doctor", "office": "Sara Ford", "doctor": "Sara Ford", "phone": "813-532-3111", "address": "401 W Main Street, Suite 710", "city": "Louisville KY", "state": "OH", "county": "", "specialty": "", "notes": "Vocational expert", "extra": "", "_bid": "b48"}, {"type": "Doctor", "office": "Alinea Perfomance ", "doctor": "Andrew Gillihan", "phone": "513-434-3669", "address": "7227 Montgomery Road Ste C", "city": "Cincinnati", "state": "OH", "county": "", "specialty": "DPT, Crossfit Trainer", "notes": "Treats on lien if needed", "extra": "", "_bid": "b49"}, {"type": "IME Doctor", "office": "Aptiva", "doctor": "Dr Chunduri", "phone": "513-262-7561", "address": "2093 Medical Arts Drive", "city": "Hebron", "state": "OH", "county": "", "specialty": "Ortho Spine Surgeon", "notes": "", "extra": "", "_bid": "b50"}, {"type": "IME Doctor", "office": "Dr Shapiro", "doctor": "Dr Shapiro", "phone": "513-791-5548", "address": "9030 Montgomery Road", "city": "Cincinnati", "state": "OH", "county": "", "specialty": "PM&R", "notes": "Not a surgeon", "extra": "", "_bid": "b51"}, {"type": "IME Doctor", "office": "Kettering Health Ortho & Sports Med", "doctor": "Dr. Schielder", "phone": "513-737-0257", "address": "840 NW Washington Blvd, Suite A", "city": "Hamilton", "state": "OH", "county": "", "specialty": "", "notes": "", "extra": "", "_bid": "b52"}, {"type": "IME Doctor", "office": "Dr Mark Orlando", "doctor": "", "phone": "513-252-4042", "address": "4744 Maxwell Drive", "city": "Mason", "state": "OH", "county": "", "specialty": "", "notes": "", "extra": "", "_bid": "b53"}, {"type": "IME Doctor", "office": "Kettering Health Medical - Brain and Spine", "doctor": "Dr Neil Patel", "phone": "937-643-9299", "address": "", "city": "Dautpm", "state": "OH", "county": "", "specialty": "Surgeon & Neuro", "notes": "Tanya Scheduler - ext 86009- neil.patel@ketteringhealth.org", "extra": "", "_bid": "b54"}, {"type": "Attorney", "office": "Attorney at Law Gary D. Kenworthy", "doctor": "", "phone": "7404772536", "address": "443 N Court St", "city": "Circleville", "state": "OH", "county": "Pickaway", "specialty": "Bankrupcy", "notes": "", "extra": "Email: kenworthylaw@rrohio.com", "_bid": "b55"}, {"type": "Attorney", "office": "Harry Zornow", "doctor": "", "phone": "5137379770", "address": "860 NW Washington Blvd", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Bankrupcy", "notes": "Butler/ Hamilton/ Warren/ Clermont/ Clark/ Fayette/ Montgomery/ Preble County", "extra": "Email: zornowhb@aim.com", "_bid": "b56"}, {"type": "Attorney", "office": "Lemire & Associates LLC Attorneys at Law", "doctor": "", "phone": "4405769177", "address": "531 E Beech St", "city": "Jefferson", "state": "OH", "county": "Ashtabula", "specialty": "Bankrupcy,Probate", "notes": "", "extra": "Email: cory@attorneylemire.com", "_bid": "b57"}, {"type": "Attorney", "office": "Stewart Law", "doctor": "", "phone": "7402072978", "address": "118 N Washington St", "city": "Circleville", "state": "OH", "county": "Pickaway", "specialty": "Business Law", "notes": "", "extra": "Email: brian@stewart.law", "_bid": "b58"}, {"type": "Attorney", "office": "Parrish, Marcum & Trokhan Co., LPA", "doctor": "", "phone": "5132754571", "address": "300 High St Suite 800", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Business Law", "notes": "", "extra": "Email: ctt@parrishattys.com", "_bid": "b59"}, {"type": "Attorney", "office": "SaucedoChavez PC*", "doctor": "", "phone": "5053383945", "address": "800 Lomas Blvd NW", "city": "Albuquerque", "state": "NM", "county": "", "specialty": "Business Law,Personal Injury,Employment", "notes": "We receive a fee", "extra": "Email: rharrigan@saucedochavez.com", "_bid": "b60"}, {"type": "Attorney", "office": "The Finney Law Firm", "doctor": "", "phone": "5139436650", "address": "4270 Ivy Pointe Blvd, Suite 225", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Business Law,Workers Compensation", "notes": "", "extra": "Email: info@finneylawfirm.com", "_bid": "b61"}, {"type": "Attorney", "office": "Joseph Fantini*", "doctor": "", "phone": "2153109649", "address": "101 Greenwood Ave", "city": "Jenkintown", "state": "PA", "county": "", "specialty": "Class Action", "notes": "We receive a fee", "extra": "Email: jfantini@roseninjurylawyers.com", "_bid": "b62"}, {"type": "Attorney", "office": "AJLJ (Ashley Jones)", "doctor": "Ashley Jones", "phone": "2167368551", "address": "789 W Market St", "city": "Akron", "state": "OH", "county": "Summit", "specialty": "Criminal", "notes": "", "extra": "Email: info@AJLJlaw.com", "_bid": "b63"}, {"type": "Attorney", "office": "Aaron Maus", "doctor": "Aaron Maus", "phone": "5132413992", "address": "202 E Main St", "city": "Batavia", "state": "OH", "county": "Clermont", "specialty": "Criminal", "notes": "", "extra": "Email: aaron@maus-law.com", "_bid": "b64"}, {"type": "Attorney", "office": "Ryan Agee Law", "doctor": "", "phone": "9374526001", "address": "100 S Lafayette St", "city": "Camden", "state": "OH", "county": "Preble", "specialty": "Criminal", "notes": "", "extra": "Email: info@ryanageelaw.com", "_bid": "b65"}, {"type": "Attorney", "office": "Bartlett & Weigle", "doctor": "", "phone": "5132413992", "address": "220 Findlay St", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Criminal", "notes": "", "extra": "Email: jbartlett@bartlettlaw.com", "_bid": "b66"}, {"type": "Attorney", "office": "The Cochran Firm*", "doctor": "", "phone": "5133814878", "address": "527 Linton St", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Criminal", "notes": "We receive a fee", "extra": "Email: frucker@cochranohio.com", "_bid": "b67"}, {"type": "Attorney", "office": "The Farrish Law Firm", "doctor": "", "phone": "", "address": "810 Sycamore St", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Criminal", "notes": "", "extra": "Email: Dnicholas@kellyfarrishlaw.com", "_bid": "b68"}, {"type": "Attorney", "office": "The Law Office of Lucas A Thompson", "doctor": "", "phone": "7405004005", "address": "125 W Main Street ", "city": "Circleville ", "state": "OH", "county": "Pickaway", "specialty": "Criminal", "notes": "", "extra": "Email: info@gotthompson.com", "_bid": "b69"}, {"type": "Attorney", "office": "Law Office of Joshua Hall", "doctor": "", "phone": "6144398865", "address": "35 E Livingston Ave", "city": "Columbus", "state": "OH", "county": "Franklin", "specialty": "Criminal", "notes": "Columbus attorney who handles cases in Fairfield ", "extra": "Email: joshuahallesq@hotmail.com", "_bid": "b70"}, {"type": "Attorney", "office": "Law Office of Jacob D. Long", "doctor": "", "phone": "5132563355", "address": "1248 Nilles Rd", "city": "Fairfield", "state": "OH", "county": "Butler", "specialty": "Criminal", "notes": "", "extra": "Email: jacob@jacoblonglaw.com", "_bid": "b71"}, {"type": "Attorney", "office": "Walker Law- Jon Walker", "doctor": "", "phone": "9372038262", "address": "108 S Main St", "city": "Georgetown", "state": "OH", "county": "Brown", "specialty": "Criminal", "notes": "", "extra": "Email: jwalker@walkerlawllcohio.com", "_bid": "b72"}, {"type": "Attorney", "office": "Wallace Law Firm", "doctor": "", "phone": "9374442563", "address": "108 S High St", "city": "Mount Orab", "state": "OH", "county": "Brown", "specialty": "Criminal", "notes": "", "extra": "Email: office@blessingwallacelaw.com", "_bid": "b73"}, {"type": "Attorney", "office": "Reese Pyle Meyer PLL (Nate Hurst)", "doctor": "", "phone": "7403453431", "address": "36 N 2nd St", "city": "Newark", "state": "OH", "county": "Licking", "specialty": "Criminal", "notes": "", "extra": "Email: info@reesepyle.com", "_bid": "b74"}, {"type": "Attorney", "office": "Christopher Bucio", "doctor": "", "phone": "9376522224", "address": "115 North Main Street", "city": "Urbana", "state": "OH", "county": "Champaign", "specialty": "Criminal", "notes": "", "extra": "Email: ", "_bid": "b75"}, {"type": "Attorney", "office": "The Law Office of Caleb Johnson, LLC", "doctor": "", "phone": "7406209002", "address": "153 E Court St", "city": "Washington Court House", "state": "OH", "county": "Fayette", "specialty": "Criminal", "notes": "", "extra": "Email: info@kohlcook.com", "_bid": "b76"}, {"type": "Attorney", "office": "Law Offices of David E. Grimes", "doctor": "", "phone": "9375443900", "address": "108 E Mulberry St", "city": "West Union", "state": "OH", "county": "Adams", "specialty": "Criminal", "notes": "", "extra": "Email: info@davidgrimeslaw.com", "_bid": "b77"}, {"type": "Attorney", "office": "Rose & Dobyns (Scott Evans & Blaise Underwood)", "doctor": "", "phone": "9373822838", "address": "97 N South St", "city": "Wilmington", "state": "OH", "county": "Clinton", "specialty": "Criminal", "notes": "", "extra": "Email: grose@rosedobyns.com", "_bid": "b78"}, {"type": "Attorney", "office": "Auciello Law Firm - Joe Auciello", "doctor": "", "phone": "5137372286", "address": "306 S 3rd Street", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Criminal", "notes": "", "extra": "Email: info@myaelaw.com", "_bid": "b79"}, {"type": "Attorney", "office": "Christopher James Pagan", "doctor": "", "phone": "5134241823", "address": "1501 1st Ave", "city": "Middletown", "state": "OH", "county": "Butler", "specialty": "Criminal,Appeals", "notes": "", "extra": "Email: cpagan@repperpagan.com", "_bid": "b80"}, {"type": "Attorney", "office": "Jeremy J Evans, Attorney At Law", "doctor": "", "phone": "5139872000", "address": "306 S 3rd St", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Criminal,Family Law", "notes": "", "extra": "Email: info@myaelaw.com", "_bid": "b81"}, {"type": "Attorney", "office": "Guinigundo Law", "doctor": "", "phone": "5138744300", "address": "5331 S Gilmore Rd", "city": "Fairfield", "state": "OH", "county": "Butler", "specialty": "Criminal,Truancy", "notes": "", "extra": "Email: info@guinigundocpa.com", "_bid": "b82"}, {"type": "Attorney", "office": "Oleary Law Office", "doctor": "", "phone": "7404744411", "address": "130 W Franklin St", "city": "Circleville", "state": "OH", "county": "Pickaway", "specialty": "Criminal,Wills and Trust,Personal Injury", "notes": "", "extra": "Email: matt@olearylegal.com", "_bid": "b83"}, {"type": "Attorney", "office": "Ched Peck - The Peck Law Office", "doctor": "", "phone": "5136015189", "address": "616 Dayton St", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Divorce", "notes": "", "extra": "Email: peck@lawyer.com", "_bid": "b84"}, {"type": "Attorney", "office": "Wicktora and Miller", "doctor": "", "phone": "5133189981", "address": "9380 Main St", "city": "Montgomery", "state": "OH", "county": "Hamilton", "specialty": "Divorce,Family Law", "notes": "", "extra": "Email: samantha@wmlawoh.com;brien@wmlawoh.com", "_bid": "b85"}, {"type": "Attorney", "office": "Wilson & White PLLC", "doctor": "", "phone": "304-234-5444", "address": "123 Pleasant Street", "city": "Morgantown", "state": "WV", "county": "", "specialty": "Divorce,Family Law", "notes": "", "extra": "Email: wilson@wilsonlaw.com", "_bid": "b86"}, {"type": "Attorney", "office": "Carla Loon Leader", "doctor": "", "phone": "5139094332", "address": "8717 Tiburon Dr", "city": "Montgomery", "state": "OH", "county": "Hamilton", "specialty": "education rights", "notes": "", "extra": "Email: educationrights@cincinnatieducationlaw.com", "_bid": "b87"}, {"type": "Attorney", "office": "Tod Thompson*", "doctor": "", "phone": "5133224348", "address": "810 Sycamore St", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Employment", "notes": "We receive a fee", "extra": "Email: tod@tthompsonlaw.com", "_bid": "b88"}, {"type": "Attorney", "office": "Mike Haas", "doctor": "", "phone": "5133815050", "address": "404 E 12th St 2nd Floor", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Evictions", "notes": "", "extra": "Email: ", "_bid": "b89"}, {"type": "Attorney", "office": "Maria Walker Ante Law", "doctor": "", "phone": "8599571510", "address": "7000 Houston Rd Ste 38", "city": "Florence", "state": "KY", "county": "", "specialty": "Family Law", "notes": "", "extra": "Email: info@walkerantelaw.com", "_bid": "b90"}, {"type": "Attorney", "office": "Chris Diedling Law", "doctor": "", "phone": "5137712444", "address": "123 Boggs Ln", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Family Law", "notes": "", "extra": "Email: cdiedling@cmrs-law.com", "_bid": "b91"}, {"type": "Attorney", "office": "Krugler Law LLC", "doctor": "", "phone": "5139161600", "address": "4959 Delhi Rd", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Family Law", "notes": "", "extra": "Email: info@kruglerlaw.com", "_bid": "b92"}, {"type": "Attorney", "office": "Soroka & Associates", "doctor": "", "phone": "6147683733", "address": "503 S Front St", "city": "Columbus", "state": "OH", "county": "Franklin", "specialty": "Family Law", "notes": "", "extra": "Email: reception@sorokalegal.com;tabatha@sorokalegal.com", "_bid": "b93"}, {"type": "Attorney", "office": "Michelle Thomas, LLC", "doctor": "", "phone": "9375831819", "address": "208 N Barron St", "city": "Eaton", "state": "OH", "county": "Preble", "specialty": "Family Law", "notes": "", "extra": "Email: michele@michelethomasattorney.com", "_bid": "b94"}, {"type": "Attorney", "office": "Judkins & Hayes (John Judkins)", "doctor": "", "phone": "9379814403", "address": "303 W Jefferson St", "city": "Greenfield", "state": "OH", "county": "Highland", "specialty": "Family Law", "notes": "", "extra": "Email: jhlaw@roadrunner.com", "_bid": "b95"}, {"type": "Attorney", "office": "Butler & Marshall Attorneys At Law", "doctor": "", "phone": "7403354381", "address": "108 N Hinde St", "city": "Washington Court House", "state": "OH", "county": "Fayette", "specialty": "Family Law", "notes": "", "extra": "Email: jenny@butlermarshall.com", "_bid": "b96"}, {"type": "Attorney", "office": "Edwards & Patterson Law*", "doctor": "", "phone": "8777615059", "address": "7136 South Yale Ave", "city": "Tulsa", "state": "OK", "county": "", "specialty": "Family Law", "notes": "LIP Referral, we receive a fee", "extra": "Email: tony@epinjurylaw.com", "_bid": "b97"}, {"type": "Attorney", "office": "Hoyer Law", "doctor": "", "phone": "8013418450", "address": "1250 E 200 S", "city": "Lehi", "state": "UT", "county": "", "specialty": "Family Law", "notes": "Legal Intake Pros Network Referral (Yani Smith)", "extra": "Email: analia@hoyer.law", "_bid": "b98"}, {"type": "Attorney", "office": "The Law Offices of Kendra Kinney", "doctor": "", "phone": "6145838765", "address": "443 N Court St", "city": "Circleville", "state": "OH", "county": "Pickaway", "specialty": "Family Law,Divorce", "notes": "", "extra": "Email: kkinney@circlevillelaw.com", "_bid": "b99"}, {"type": "Attorney", "office": "Michael A. Newland Law Office", "doctor": "", "phone": "5138879595", "address": "300 High St", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Family Law,Divorce", "notes": "", "extra": "Email: ", "_bid": "b100"}, {"type": "Attorney", "office": "Freking Myers & Reul LLC", "doctor": "", "phone": "5138668816", "address": "600 Vine St", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "General Practice", "notes": "", "extra": "Email: hwaldron@fmr.law", "_bid": "b101"}, {"type": "Attorney", "office": "T. David Burgess Co., L.P.A.", "doctor": "", "phone": "5137242252", "address": "110 N 3rd St", "city": "Williamsburg", "state": "OH", "county": "Clermont", "specialty": "General Practice", "notes": "", "extra": "Email: david@theburgessfirm.com", "_bid": "b102"}, {"type": "Attorney", "office": "Pat Moeller", "doctor": "", "phone": "5138448515", "address": "223 S Front Ave", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "General Practice, Divorce, Juvenile, Wills and Trust", "notes": "", "extra": "Email: moellerpatrick@fuse.net", "_bid": "b103"}, {"type": "Attorney", "office": "Fiehrer & Fritsch, LLC", "doctor": "", "phone": "5138877300", "address": "First Financial Bank Building", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "General Practice, Divorce, Wills and Trust", "notes": "", "extra": "Email: carla@fiehrerfritsch.com", "_bid": "b104"}, {"type": "Attorney", "office": "Nazly Mamadova", "doctor": "", "phone": "5134562959", "address": "11260 Chester Rd #310", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Immigration", "notes": "", "extra": "Email: Nazly@nazlylaw.com", "_bid": "b105"}, {"type": "Attorney", "office": "Affiliates of Scott Richardson", "doctor": "Scott Richardson", "phone": "6025530000", "address": "8433 N Black Cyn Hwy", "city": "Phoenix", "state": "AZ", "county": "", "specialty": "Mass Tort", "notes": "", "extra": "Email: ", "_bid": "b106"}, {"type": "Attorney", "office": "Scott M. Kuboff, Esq. | Lowe Scott Fisher*", "doctor": "", "phone": "3305831505", "address": "115 Main St.", "city": "Chardon", "state": "OH", "county": "Geauga", "specialty": "Medical Malpractice", "notes": "We receive a fee", "extra": "Email: skuboff@lsflaw.com", "_bid": "b107"}, {"type": "Attorney", "office": "Rourke & Blumenthal*", "doctor": "", "phone": "6143213212", "address": "495 S High St Suite 450", "city": "Columbus", "state": "OH", "county": "Franklin", "specialty": "Medical Malpractice", "notes": "We receive a fee", "extra": "Email: ahawkins@randbllp.com", "_bid": "b108"}, {"type": "Attorney", "office": "Cowan & Hilgeman", "doctor": "", "phone": "9377290000", "address": "12 W Monument Ave", "city": "Dayton", "state": "OH", "county": "Montgomery", "specialty": "Medical Malpractice", "notes": "", "extra": "Email: Jack@cowanhilgemanlaw.com", "_bid": "b109"}, {"type": "Attorney", "office": "Garnett Patterson*", "doctor": "", "phone": "2565398686", "address": "Decatur, AL, USA", "city": "Decatur", "state": "AL", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: andrea@gpinjurylaw.com", "_bid": "b110"}, {"type": "Attorney", "office": "Law Offices of Alan Levar", "doctor": "", "phone": "8664471568", "address": "702 Caddo St.", "city": "Arkansas", "state": "AR", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: alan@levarlaw.com", "_bid": "b111"}, {"type": "Attorney", "office": "Lloyd Baker Injury Lawyers", "doctor": "", "phone": "6022655555", "address": "4428 N 12th St", "city": "Phoenix", "state": "AZ", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: lloyd@855bakerlaw.com", "_bid": "b112"}, {"type": "Attorney", "office": "Rawlins Law, APC", "doctor": "", "phone": "8582578778", "address": "3511 Camino Del Rio S", "city": "California", "state": "CA", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: ashley@therawlinsfirm.com", "_bid": "b113"}, {"type": "Attorney", "office": "Jurewitz Law Group", "doctor": "", "phone": "6192335020", "address": "600 B St", "city": "San Diego", "state": "CA", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: ", "_bid": "b114"}, {"type": "Attorney", "office": "The Simon Law Group*", "doctor": "", "phone": "8558558910", "address": "2916 W 164th St", "city": "Torrance", "state": "CA", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: intake@thesimonlawgroup.com", "_bid": "b115"}, {"type": "Attorney", "office": "Dormer Harpring", "doctor": "", "phone": "3037474404", "address": "3457 Ringsby Ct", "city": "Denver", "state": "CO", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: kch@denvertrial.com", "_bid": "b116"}, {"type": "Attorney", "office": "The Flood Law Firm", "doctor": "", "phone": "8608136089", "address": "190 Washington St.", "city": "Middletown", "state": "CT", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: bflood@thefloodlawfirm.com", "_bid": "b117"}, {"type": "Attorney", "office": "Roman Austin Personal Injury Lawyers*", "doctor": "", "phone": "7276106436", "address": "1811 N. Belcher Road", "city": "Clearwater", "state": "FL", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral, we receive a fee", "extra": "Email: croman@romanaustin.com", "_bid": "b119"}, {"type": "Attorney", "office": "The Law Firm of Anidjar & Levine, P.A.", "doctor": "", "phone": "9648591634", "address": "300 SE 17th St", "city": "Fort Lauderdale", "state": "FL", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: gmarcello@anl-law.com;egusky@anl-law.com;manidjar@anl-law.com", "_bid": "b120"}, {"type": "Attorney", "office": "Baggett Law Personal Injury Lawyers*", "doctor": "", "phone": "9044472820", "address": "9471 Baymeadows", "city": "Jacksonville", "state": "FL", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral, we receive a fee", "extra": "Email: matt@baggettlaw.com", "_bid": "b121"}, {"type": "Attorney", "office": "LaBovick Law", "doctor": "", "phone": "8665226842", "address": "5220 Hood Rd", "city": "Palm Beach Gardens", "state": "FL", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: intake@LaBovick.com", "_bid": "b122"}, {"type": "Attorney", "office": "Rue & Ziffra", "doctor": "", "phone": "3862212957", "address": "632 Dunlawton Ave", "city": "Port Orange", "state": "FL", "county": "", "specialty": "Personal Injury", "notes": "Legal Intake Pros Network Referral (Yani Smith)", "extra": "Email: info@rueziffra.com", "_bid": "b123"}, {"type": "Attorney", "office": "Mandelbaum Trichler Law Center*", "doctor": "", "phone": "8137321802", "address": "6528 Gunn Hwy", "city": "Tampa", "state": "FL", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: Ernie@mtlawcenter.com", "_bid": "b124"}, {"type": "Attorney", "office": "The Champion Firm", "doctor": "", "phone": "4045968044", "address": "1230 Peachtree St NE", "city": "Atlanta", "state": "GA", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: leticia@thechampionfirm.com;intake@thechampionfirm.com", "_bid": "b125"}, {"type": "Attorney", "office": "Pritchard Injury Firm", "doctor": "", "phone": "4705778152", "address": "201 W. Main St", "city": "Cartersville", "state": "GA", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: zach@pritchardinjuryfirm.com", "_bid": "b126"}, {"type": "Attorney", "office": "Levinson & Stefani", "doctor": "", "phone": "8775404251", "address": "10 S La Salle St", "city": "Chicago", "state": "IL", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: Ken@levinsonstefani.com", "_bid": "b127"}, {"type": "Attorney", "office": "Kaushal Law*", "doctor": "", "phone": "7654343787", "address": "50 East 91st Street ste 102, Indianapolis, IN, USA", "city": "Indianapolis", "state": "IN", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: paul@kaushallawyers.com", "_bid": "b128"}, {"type": "Attorney", "office": "The Law Office of Marvin Knorr", "doctor": "", "phone": "8592866121", "address": "7 W 7th St", "city": "Covington", "state": "KY", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: marvin@marvinknorrlaw.com", "_bid": "b129"}, {"type": "Attorney", "office": "Chandler Maze", "doctor": "", "phone": "8599009000", "address": "127 W High St", "city": "Sterling", "state": "KY", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: office@kentuckylegalteam.com", "_bid": "b130"}, {"type": "Attorney", "office": "Kenny Habe Injury Law*", "doctor": "", "phone": "3373999000", "address": "110 E Kaliste Saloom Rd", "city": "Lafayette", "state": "LA", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: info@gokenny.com", "_bid": "b131"}, {"type": "Attorney", "office": "The Glenn Armentor", "doctor": "", "phone": "(337) 233-1471", "address": "300 Stewart St.", "city": "Lafayette", "state": "LA", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: garmentor@glennarmentor.com", "_bid": "b132"}, {"type": "Attorney", "office": "Mansfield, Melancon, Cranmer & Dick, LLC", "doctor": "", "phone": "", "address": "318 Harrison Ave", "city": "New Orleans", "state": "LA", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: scott@mmcdlaw.com", "_bid": "b133"}, {"type": "Attorney", "office": "Earley Law Group*", "doctor": "", "phone": "6173974242", "address": "44 School St", "city": "Boston", "state": "MA", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral, we receive a fee", "extra": "Email: cearley@earleylawgroup.com", "_bid": "b134"}, {"type": "Attorney", "office": "WGK Personal Injury Lawyers*", "doctor": "", "phone": "4104699318", "address": "14 W Madison Street", "city": "Baltimore", "state": "MD", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral, we receive a fee", "extra": "Email: hunterduke@wgk-law.com", "_bid": "b135"}, {"type": "Attorney", "office": "Alpert Schreyer, LLC", "doctor": "", "phone": "3019360042", "address": "25 E Patrick St", "city": "Frederick", "state": "MD", "county": "", "specialty": "Personal Injury", "notes": "Legal Intake Pros Network Referral (Yani Smith)", "extra": "Email: alpert@dcmdlaw.com", "_bid": "b136"}, {"type": "Attorney", "office": "Mike Morse Law Firm*", "doctor": "", "phone": "8559324039", "address": "17187 Schaefer Hwy", "city": "Detroit", "state": "MI", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: contact@855mikewins.com", "_bid": "b137"}, {"type": "Attorney", "office": "Christensen Law*", "doctor": "", "phone": "2489009000", "address": "Riverside Center 25925 Telegraph Rd.", "city": "Southfield", "state": "MI", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral, we receive a fee", "extra": "Email: dchristensen@davidchristensenlaw.com", "_bid": "b138"}, {"type": "Attorney", "office": "Mutrux Firm, L.L.C.*", "doctor": "", "phone": "8885504026", "address": "222 S Central Ave", "city": "Clayton", "state": "MO", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: info@MFInjury.com", "_bid": "b139"}, {"type": "Attorney", "office": "Whitley Law Firm", "doctor": "", "phone": "9197050594", "address": "415 E Woodlawn Rd", "city": "Charlotte", "state": "NC", "county": "", "specialty": "Personal Injury", "notes": "Legal Intake Pros Network Referral (Yani Smith)", "extra": "Email: intakegroup@whitleylawfirm.com", "_bid": "b140"}, {"type": "Attorney", "office": "The Ricci Firm*", "doctor": "", "phone": "2522482011", "address": "2221 Stantonsburg Rd", "city": "Greenville", "state": "NC", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: intakedepartment@riccilawnc.com", "_bid": "b141"}, {"type": "Attorney", "office": "Maggiano, DiGirolamo & Lizzi, P.C", "doctor": "", "phone": "2015859111", "address": "201 Columbia Ave", "city": "Fort Lee", "state": "NJ", "county": "", "specialty": "Personal Injury", "notes": "Legal Intake Pros Network Referral (Yani Smith)", "extra": "Email: jmaggiano@mdltriallawyers.com", "_bid": "b142"}, {"type": "Attorney", "office": "J. Cogburn", "doctor": "", "phone": "7027108428", "address": "2300 W Sahara Ave", "city": "Las Vegas", "state": "NV", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: jsc@jcogburnlaw.com", "_bid": "b143"}, {"type": "Attorney", "office": "Jerez Law*", "doctor": "", "phone": "7029417660", "address": "4484 S Pecos Rd", "city": "Las Vegas", "state": "NV", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: isaiah@jerezlaw.com", "_bid": "b144"}, {"type": "Attorney", "office": "Isaacs and Isaacs*", "doctor": "", "phone": "5134381000", "address": "201 E 5th St", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: Marketing@wewin.com", "_bid": "b145"}, {"type": "Attorney", "office": "Norris Persinger Law, LLC*", "doctor": "", "phone": "5138222929", "address": "10700 Montgomery Rd Suite 110", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: jcnorris@npinjurylaw.com;jpersinger@npinjurylaw.com", "_bid": "b146"}, {"type": "Attorney", "office": "Spivak & Sakellariou*", "doctor": "", "phone": "5135322201", "address": "2406 Auburn Ave", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: george@gsaslaw.com;alan@alanspivaklaw.com", "_bid": "b147"}, {"type": "Attorney", "office": "The Moore Firm*", "doctor": "", "phone": "5132322000", "address": "1060 Nimitzview Dr Suite 200, Cincinnati, OH 45230", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: danmoore@moorelaw.com;smalott@moorelaw.com", "_bid": "b148"}, {"type": "Attorney", "office": "The Richards Firm*", "doctor": "", "phone": "5138682731219", "address": "246 High St", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: rhys@richardsinjuryfirm.com", "_bid": "b149"}, {"type": "Attorney", "office": "Rittgers & Rittgers*", "doctor": "", "phone": "5139329949", "address": "9078 Union Centre Blvd Suite 350", "city": "West Chester Township", "state": "OH", "county": "Butler", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: rittgers@rittgers.com", "_bid": "b150"}, {"type": "Attorney", "office": "Chad Schaub Law*", "doctor": "", "phone": "6029267593", "address": "1610 W McDowell Road", "city": "Phoenix", "state": "AZ", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: chad@bigchadlaw.com", "_bid": "b151"}, {"type": "Attorney", "office": "Michigan Auto Law", "doctor": "", "phone": "8559770883", "address": "30101 Northwestern Hwy", "city": "Farmington Hills", "state": "MI", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: help@michiganautolaw.com", "_bid": "b152"}, {"type": "Attorney", "office": "Graves McLain Injury Lawyers*", "doctor": "", "phone": "9183989936", "address": "4137 S Harvard Ave", "city": "Tulsa", "state": "OK", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: chad@gravesmclain.com", "_bid": "b153"}, {"type": "Attorney", "office": "Bosworth Law*", "doctor": "", "phone": "2679284183", "address": "123 S Broad St", "city": "Philadelphia", "state": "PA", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: camerson@tombosworthlaw.com", "_bid": "b154"}, {"type": "Attorney", "office": "Ty Robinson", "doctor": "", "phone": "8432782222", "address": "28 Broad St.", "city": "Charleston", "state": "SC", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: ty@calltynow.com", "_bid": "b155"}, {"type": "Attorney", "office": "Maguire Law Firm", "doctor": "", "phone": "8434179307", "address": "1600 N Oak St", "city": "Myrtle Beach", "state": "SC", "county": "", "specialty": "Personal Injury", "notes": "Legal Intake Pros Network Referral (Yani Smith)", "extra": "Email: ashton@maguirelawfirm.com", "_bid": "b156"}, {"type": "Attorney", "office": "Elrod Pope Accident & Injury Attorneys", "doctor": "", "phone": "8039027654", "address": "212 E Black St", "city": "Rock Hill", "state": "SC", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: bleader@elrodpope.com", "_bid": "b157"}, {"type": "Attorney", "office": "Pilzer Klein", "doctor": "", "phone": "", "address": "509 W Butler Rd Ste 100", "city": "Greenville", "state": "SC", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: admin@donpilzer.com", "_bid": "b158"}, {"type": "Attorney", "office": "Garza Law Firm*", "doctor": "", "phone": "8885408300", "address": "550 W. Main Street", "city": "Knoxville", "state": "TN", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral", "extra": "Email: mgarza@garzalaw.com", "_bid": "b159"}, {"type": "Attorney", "office": "Attorney Brian White*", "doctor": "", "phone": "7137144980", "address": "3120 Southwest Fwy", "city": "Houston", "state": "TX", "county": "", "specialty": "Personal Injury", "notes": "LIP Referral, we receive a fee", "extra": "Email: brian@attorneybrianwhite.com", "_bid": "b160"}, {"type": "Attorney", "office": "Smith and Lee Injury Lawyers*", "doctor": "", "phone": "9727648513", "address": "702 N Goliad St", "city": "Rockwall", "state": "TX", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: office@smithandlee.com", "_bid": "b161"}, {"type": "Attorney", "office": "Chasen Boscolo", "doctor": "", "phone": "", "address": "8280 Willow Oaks Corporate Dr", "city": "Fairfax", "state": "VA", "county": "", "specialty": "Personal Injury", "notes": "Tom Teodori ", "extra": "Email: clientcare@chasenboscolo.com", "_bid": "b162"}, {"type": "Attorney", "office": "Smith Law Center", "doctor": "", "phone": "7576959096", "address": "27 W Queens Wy", "city": "Hampton", "state": "VA", "county": "", "specialty": "Personal Injury", "notes": "Legal Intake Pros Network Referral (Yani Smith)", "extra": "Email: intake@smithlawcenter.com", "_bid": "b163"}, {"type": "Attorney", "office": "The Advocates Injury Attorneys", "doctor": "", "phone": "2064524200", "address": "2125 Western Ave", "city": "Seattle", "state": "WA", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: mmurphy@advocates.com", "_bid": "b164"}, {"type": "Attorney", "office": "Andrea Sager Law", "doctor": "", "phone": "9209211320", "address": "201 S Marr St", "city": "Fond du Lac", "state": "WI", "county": "", "specialty": "Personal Injury", "notes": "", "extra": "Email: ", "_bid": "b165"}, {"type": "Attorney", "office": "Hupy and Abraham*", "doctor": "", "phone": "8008005678", "address": "111 E Kilbourn Ave", "city": "Milwaukee", "state": "WI", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: tcannon@hupy.com", "_bid": "b166"}, {"type": "Attorney", "office": "Skinner Law Firm*", "doctor": "", "phone": "3044592814", "address": "261 Aikens Center", "city": "Martinsburg", "state": "WV", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: dekker@skinnerfirm.com;franklyn@skinnerfirm.com", "_bid": "b167"}, {"type": "Attorney", "office": "Platte River Injury Law*", "doctor": "", "phone": "3072249378", "address": "123 S Beech St", "city": "Casper", "state": "WY", "county": "", "specialty": "Personal Injury", "notes": "We receive a fee", "extra": "Email: hello@platteriverlaw.com", "_bid": "b168"}, {"type": "Attorney", "office": "Becker Johnson*", "doctor": "", "phone": "6124361800", "address": "444 Cedar St", "city": "Saint Paul", "state": "MN", "county": "", "specialty": "Personal Injury,Mass Tort,Product Liability", "notes": "We receive a fee", "extra": "Email: akress@johnsonbecker.com", "_bid": "b169"}, {"type": "Attorney", "office": "Elk & Elk", "doctor": "", "phone": "5133705807", "address": "2754 Erie Ave", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Personal Injury,Medical Malpractice", "notes": "", "extra": "Email: info@elkandelk.com", "_bid": "b170"}, {"type": "Attorney", "office": "LaBovick Law Group*", "doctor": "", "phone": "5616258400", "address": "7340 SW 90th St", "city": "Miami", "state": "FL", "county": "", "specialty": "Personal Injury,Workers Compensation,Social Security,Mass Tort", "notes": "We receive a fee", "extra": "Email: ", "_bid": "b171"}, {"type": "Attorney", "office": "Joseph Braun", "doctor": "", "phone": "5138874560", "address": "616 Dayton St", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Probate", "notes": "", "extra": "Email: jbraun@braunlawoffice.com", "_bid": "b172"}, {"type": "Attorney", "office": "Zach Harvey Law", "doctor": "", "phone": "9372442060", "address": "20 N Limestone St", "city": "Springfield", "state": "OH", "county": "Clark", "specialty": "Probate", "notes": "", "extra": "Email: ", "_bid": "b173"}, {"type": "Attorney", "office": "Kiger & Kiger Law", "doctor": "", "phone": "7403355271", "address": "132 S Main St", "city": "Washington Court House", "state": "OH", "county": "Fayette", "specialty": "Probate", "notes": "", "extra": "Email: taraaills@outlook.com", "_bid": "b174"}, {"type": "Attorney", "office": "The Law Office of James Hubbard", "doctor": "", "phone": "9376838488", "address": "623 Skodborg Drive", "city": "Eaton", "state": "OH", "county": "Preble", "specialty": "Probate", "notes": "", "extra": "Email: ", "_bid": "b175"}, {"type": "Attorney", "office": "Lyons & Lyons", "doctor": "", "phone": "5137772222", "address": "8310 Princeton Glendale Rd", "city": "West Chester Township", "state": "OH", "county": "Butler", "specialty": "Probate, Family Law", "notes": "", "extra": "Email: klyons@lyonsandlyons.com", "_bid": "b176"}, {"type": "Attorney", "office": "Belle Legal, LLC", "doctor": "Tina Barrett", "phone": "513-351-6058", "address": "6900 Miami Avenue", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Probate, Family Law", "notes": "", "extra": "Email: Info@belle.legal", "_bid": "b177"}, {"type": "Attorney", "office": "Burg Simpson*", "doctor": "", "phone": "5138525600", "address": "201 E 5th St", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Product Liability", "notes": "", "extra": "Email: clientservices@burgsimpson.com", "_bid": "b178"}, {"type": "Attorney", "office": "CMRS Law (Michael Spillane)", "doctor": "", "phone": "5137712444", "address": "123 Boggs Ln", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Real Estate", "notes": "", "extra": "Email: MSpillane@cmrs-law.com", "_bid": "b179"}, {"type": "Attorney", "office": "Badin & Jones", "doctor": "", "phone": "5138682731", "address": "246 High St # 101", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Real Estate", "notes": "", "extra": "Email: jon@badenjones.com", "_bid": "b180"}, {"type": "Attorney", "office": "Rapier & Bowling (Kyle Rapier)", "doctor": "", "phone": "5138682731", "address": "315 S Monument Ave", "city": "Hamilton", "state": "OH", "county": "Butler", "specialty": "Real Estate", "notes": "", "extra": "Email: Kmr@rapierbowling.com", "_bid": "b181"}, {"type": "Attorney", "office": "Michael Haas", "doctor": "", "phone": "5133185050", "address": "04 E 12th St 2nd floor", "city": "Cincinnati", "state": "OH", "county": "Hamilton", "specialty": "Real Estate,Evictions", "notes": "", "extra": "Email: mike@evictionmanager.com", "_bid": "b182"}, {"type": "Attorney", "office": "Peelle Law Office", "doctor": "", "phone": "4195130973", "address": "1929 Rombach Ave", "city": "Wilmington", "state": "OH", "county": "Clinton", "specialty": "Wills and Trust", "notes": "", "extra": "Email: bbrewer@peellelaw.com", "_bid": "b183"}, {"type": "Attorney", "office": "The Bainbridge Firm", "doctor": "", "phone": "7403537548", "address": "900 Michigan Ave", "city": "Columbus", "state": "OH", "county": "Franklin", "specialty": "Workers Compensation", "notes": "Referral Fee", "extra": "Email: dcollins@bainbridgefirm.com", "_bid": "b184"}, {"type": "Attorney", "office": "McCann Dillon Jaffe & Lamb", "doctor": "", "phone": "2155157644", "address": "1500 John F Kennedy Blvd", "city": "Philadelphia", "state": "PA", "county": "", "specialty": "Workers Compensation,Medical Malpractice,Personal Injury", "notes": "", "extra": "Email: ", "_bid": "b185"}, {"type": "Attorney", "office": "Eagle Team", "doctor": "", "phone": "8333692473", "address": "1050 Connecticut Ave NW", "city": "Washington", "state": "DC", "county": "", "specialty": "Workers Compensation,Personal Injury,Social Security", "notes": "", "extra": "Email: josh@eagleteam.law", "_bid": "b186"}];
+const AUTO_PREF = new Set(["b166", "b137", "b141", "b160", "b171", "b88", "b128", "b134", "b110", "b60", "b184", "b138", "b121", "b67", "b150", "b169", "b97", "b149", "b144", "b145", "b107", "b154", "b62", "b119", "b148", "b146", "b167", "b168", "b153", "b161", "b139", "b147", "b135", "b151", "b115", "b108"]);
+const CACHE_KEY = 'kh_geocache_v8';
+const EDITS_KEY = 'kh_edits_v3';
+const ADDED_KEY = 'kh_added_v2';
+const HASH_KEY  = 'kh_hash_v1';
+const DRIVE_MI  = 15;
+const OH_BB     = '-84.82,38.40,-80.52,42.33';
+// Config loaded at startup from a public JSONBin bin — no keys in source code
+const CONFIG_BIN_ID = '69e1126536566621a8be76e8';
+let JB_KEY  = '';
+let JB_BIN  = '';
+let GEO_KEY = '';
+const TYPE_COLORS = {
+  Chiropractor:'#7f1712', Doctor:'#4d4d4d',
+  'IME Doctor':'#a0360f', Attorney:'#b8860b'
+};
+
+// ── STATE ─────────────────────────────────────────────────────
+let map, markerLayer, clientMarker;
+let geocodeCache = {}, userEdits = {}, userAdded = [];
+let activeType = 'All', activeSub = '', refSearch = '';
+let clientPos = null, top10 = [], selectedPicks = [], msgOpen = false;
+let acTimer = null;
+let sheetH0 = 0, sheetY0 = 0, sheetDrag = false;
+let resH0 = 0, resY0 = 0, resDrag = false;
+
+// ── HELPERS ───────────────────────────────────────────────────
+const isMobile = () => window.innerWidth <= 768;
+const getRecId = r => r._bid || r.id || '?';
+const getEdit  = r => userEdits[getRecId(r)] || {};
+const hasMassage = r => !!(getEdit(r).hasMassage || r.hasMassage);
+const getSender  = () => document.getElementById('who-select').value || '';
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const toTC  = s => s.toLowerCase().replace(/\b(\w)/g, c => c.toUpperCase());
+
+function haverDist(lat1,lon1,lat2,lon2) {
+  const R=3958.8, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function isPreferred(r) {
+  const e = getEdit(r);
+  if (e.prefOverride === false) return false;
+  if (e.preferred === true) return true;
+  if (AUTO_PREF.has(getRecId(r))) return true;
+  return false;
+}
+
+function simpleHash(obj) {
+  const s = JSON.stringify(obj); let h = 0;
+  for (let i=0; i<s.length; i++) h = Math.imul(31,h)+s.charCodeAt(i)|0;
+  return String(h);
+}
+
+function getAllData() {
+  const seen = new Set();
+  return [...BASE_DATA, ...userAdded].filter(r => {
+    const id = getRecId(r);
+    if (seen.has(id)) return false;
+    seen.add(id); return true;
+  });
+}
+
+// ── GEOCODING ─────────────────────────────────────────────────
+function geoKey(r) {
+  return ((r.address||'')+','+(r.city||'')+','+(r.state||'OH')).toLowerCase().replace(/\s+/g,' ').trim();
+}
+function getCoords(r) { return geocodeCache[geoKey(r)] || null; }
+function buildAddr(r) { return [r.address, r.city, r.state||'OH'].filter(x=>x&&x.trim()).join(', '); }
+
+function parseAddrParts(addr) {
+  const zipM=addr.match(/\b(\d{5}(?:-\d{4})?)\b/), zip=zipM?zipM[1]:'';
+  const stM=addr.match(/,?\s*([A-Za-z]{2})\s*(?:\d{5})?(?:\s*,.*)?$/), state=stM?stM[1].toUpperCase():'';
+  const parts=addr.split(',').map(p=>p.trim());
+  const street=parts[0]||'', city=parts.length>=2?parts[1].replace(/\s+[A-Z]{2}\s*\d{5}.*$/,'').trim():'';
+  return {street,city,state,zip};
+}
+function expandAbbr(s) {
+  return s.replace(/\bSt\.?(?=\s|,|$)/gi,'Street').replace(/\bAve\.?(?=\s|,|$)/gi,'Avenue')
+    .replace(/\bBlvd\.?(?=\s|,|$)/gi,'Boulevard').replace(/\bDr\.?(?=\s|,|$)/gi,'Drive')
+    .replace(/\bRd\.?(?=\s|,|$)/gi,'Road').replace(/\bLn\.?(?=\s|,|$)/gi,'Lane')
+    .replace(/\bCt\.?(?=\s|,|$)/gi,'Court').replace(/\bPl\.?(?=\s|,|$)/gi,'Place')
+    .replace(/\bN\.?\s+/gi,'North ').replace(/\bS\.?\s+/gi,'South ')
+    .replace(/\bE\.?\s+/gi,'East ').replace(/\bW\.?\s+/gi,'West ').replace(/\s{2,}/g,' ').trim();
+}
+function fmtCensus(m) {
+  const p=m.split(',').map(s=>s.trim());
+  return p.length>=4 ? `${toTC(p[0])}, ${toTC(p[1])}, ${p[2].toUpperCase()} ${p[3]}` : toTC(m);
+}
+
+async function geocodioGeo(addr) {
+  try {
+    const d = await(await fetch(`https://api.geocod.io/v1.7/geocode?q=${encodeURIComponent(addr)}&api_key=${GEO_KEY}&limit=1`,{signal:AbortSignal.timeout(8000)})).json();
+    const res = d?.results?.[0];
+    if (res?.location) {
+      const c=res.components||{};
+      const street=[c.number||'',c.formatted_street||''].filter(Boolean).join(' ');
+      const fmt=[toTC(street),toTC(c.city||''),`${c.state||''}${c.zip?' '+c.zip:''}`].filter(Boolean).join(', ');
+      return {lat:res.location.lat, lng:res.location.lng, formatted:fmt};
+    }
+  } catch {} return null;
+}
+async function censusGeo(street,city,state,zip) {
+  try {
+    const p=new URLSearchParams({street,city,state:state||'',zip:zip||'',benchmark:'2020',format:'json'});
+    const d=await(await fetch(`https://geocoding.geo.census.gov/geocoder/locations/address?${p}`,{signal:AbortSignal.timeout(9000)})).json();
+    const hits=d?.result?.addressMatches;
+    if (hits?.length>0) return {lat:hits[0].coordinates.y, lng:hits[0].coordinates.x, formatted:fmtCensus(hits[0].matchedAddress)};
+  } catch {} return null;
+}
+async function nomGeo(addr) {
+  try {
+    const d=await(await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1&countrycodes=us&addressdetails=1&viewbox=${OH_BB}`,{headers:{'User-Agent':'KH-ReferralFinder/1.0'},signal:AbortSignal.timeout(7000)})).json();
+    if (d?.length) {
+      const a=d[0].address||{};
+      const street=[a.house_number,a.road].filter(Boolean).join(' ');
+      const city=a.city||a.town||a.village||a.hamlet||'';
+      const parts=[street||d[0].display_name.split(',')[0].trim(), toTC(city), [a.state_code||'',a.postcode||''].filter(Boolean).join(' ')].filter(Boolean);
+      return {lat:+d[0].lat, lng:+d[0].lon, formatted:parts.join(', ')};
+    }
+  } catch {} return null;
+}
+async function fetchGeo(addr) {
+  const norm=addr.trim(), parts=parseAddrParts(norm);
+  const g=await geocodioGeo(norm); if(g) return g;
+  if (parts.street) {
+    const r=await censusGeo(parts.street,parts.city,parts.state,parts.zip); if(r) return r;
+    const exp=expandAbbr(parts.street);
+    if (exp!==parts.street) { const r2=await censusGeo(exp,parts.city,parts.state,parts.zip); if(r2) return r2; }
+  }
+  const r3=await nomGeo(norm); if(r3) return r3;
+  return nomGeo(expandAbbr(norm));
+}
+
+async function startGeocoding() {
+  const all=getAllData();
+  const todo=all.filter(r=>{ const k=geoKey(r); return k.replace(/,/g,'').trim().length>3 && !(k in geocodeCache); });
+  if (!todo.length) { renderMap(); renderList(); updateCount(); return; }
+  const bar=document.getElementById('geocode-bar'); bar.style.display='flex';
+  const prog=document.getElementById('geocode-progress'), msg=document.getElementById('geocode-msg');
+  const n=todo.length; let done=0;
+  for (const r of todo) {
+    geocodeCache[geoKey(r)] = await fetchGeo(buildAddr(r));
+    done++; prog.value=Math.round(done/n*100);
+    msg.textContent=`Geocoding ${done}/${n}: ${r.office||r.city||''}`;
+    try { localStorage.setItem(CACHE_KEY,JSON.stringify(geocodeCache)); } catch {}
+    if (done%5===0) { renderMap(); renderList(); }
+    await sleep(600);
+  }
+  bar.style.display='none'; renderMap(); renderList(); updateCount();
+}
+
+// ── AUTOCOMPLETE ──────────────────────────────────────────────
+function debounceAC() {
+  clearTimeout(acTimer);
+  const q=document.getElementById('addr-input').value.trim();
+  if (q.length<4) { closeAC(); return; }
+  acTimer=setTimeout(()=>fetchAC(q), 400);
+}
+async function fetchAC(q) {
+  try {
+    const url=`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=6&countrycodes=us&addressdetails=1&viewbox=${OH_BB}`;
+    const res=await(await fetch(url,{headers:{'User-Agent':'KH-ReferralFinder/1.0'},signal:AbortSignal.timeout(5000)})).json();
+    if (res?.length) { showAC(res); return; }
+  } catch {}
+  closeAC();
+}
+function showAC(results) {
+  const list=document.getElementById('autocomplete-list'); list.innerHTML='';
+  const seen=new Set();
+  results.forEach(r => {
+    const a=r.address||{};
+    const street=[a.house_number,a.road].filter(Boolean).join(' ');
+    const city=a.city||a.town||a.village||a.hamlet||'';
+    const state=a.state_code||'', zip=a.postcode||'';
+    const line1=street||r.display_name.split(',')[0].trim();
+    const line2=[toTC(city),state].filter(Boolean).join(', ')+(zip?' '+zip:'');
+    const formatted=[line1,line2].filter(Boolean).join(', ');
+    if (seen.has(formatted)) return; seen.add(formatted);
+    const div=document.createElement('div'); div.className='ac-item';
+    div.innerHTML=`<div class="ac-main">${line1}</div><div class="ac-sub">${line2}</div>`;
+    const go=e=>{e.preventDefault();document.getElementById('addr-input').value=formatted;closeAC();findFromCoords({lat:+r.lat,lng:+r.lon,formatted});document.getElementById('clear-btn').style.display='block';};
+    div.addEventListener('mousedown',go); div.addEventListener('touchend',go);
+    list.appendChild(div);
+  });
+  if (list.children.length) list.style.display='block'; else closeAC();
+}
+function closeAC() { document.getElementById('autocomplete-list').style.display='none'; }
+
+// ── SYNC / JSONBIN ────────────────────────────────────────────
+function setSyncDot(state) {
+  ['sync-dot'].forEach(id=>{ const d=document.getElementById(id); if(d) d.className='sync-dot '+state; });
+}
+function showChangeBadge() {
+  const b=document.getElementById('sync-badge'); if(b){b.textContent='!';b.style.display='block';}
+  const bn=document.getElementById('changes-banner'); if(bn) bn.style.display='flex';
+}
+function clearChangeBadge() {
+  const b=document.getElementById('sync-badge'); if(b) b.style.display='none';
+  const bn=document.getElementById('changes-banner'); if(bn) bn.style.display='none';
+}
+function dismissBanner(e) { e&&e.stopPropagation(); const bn=document.getElementById('changes-banner'); if(bn) bn.style.display='none'; }
+
+async function checkForTeamChanges() {
+  if (!JB_KEY||!JB_BIN) return;
+  try {
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}/latest`,{headers:{'X-Master-Key':JB_KEY,'X-Bin-Meta':'false'},signal:AbortSignal.timeout(8000)});
+    if (!r.ok) return;
+    const d=await r.json(), rec=d.record||d;
+    const rEdits=rec.edits||{}, rAdded=rec.added||[];
+    const remoteHash=simpleHash({edits:rEdits,added:rAdded});
+    const lastHash=localStorage.getItem(HASH_KEY)||'';
+    if (!lastHash) { localStorage.setItem(HASH_KEY,remoteHash); return; }
+    if (remoteHash!==lastHash) showChangeBadge();
+  } catch {}
+}
+
+async function pullFromBin() {
+  setSyncDot('syncing');
+  try {
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}/latest`,{headers:{'X-Master-Key':JB_KEY,'X-Bin-Meta':'false'},signal:AbortSignal.timeout(9000)});
+    if (!r.ok) throw new Error(r.status);
+    const d=await r.json(), rec=d.record||d;
+    userEdits={...userEdits,...(rec.edits||{})};
+    userAdded=rec.added||[];
+    localStorage.setItem(EDITS_KEY,JSON.stringify(userEdits));
+    localStorage.setItem(ADDED_KEY,JSON.stringify(userAdded));
+    localStorage.setItem(HASH_KEY,simpleHash({edits:rec.edits||{},added:rec.added||[]}));
+    clearChangeBadge(); setSyncDot('ok');
+    // geocode any newly added referrals
+    startGeocoding();
+    renderMap(); renderList();
+    return true;
+  } catch { setSyncDot('err'); return false; }
+}
+async function pushToBin() {
+  setSyncDot('syncing');
+  try {
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JB_KEY},body:JSON.stringify({edits:userEdits,added:userAdded})});
+    if (!r.ok) throw new Error(r.status);
+    const hash=simpleHash({edits:userEdits,added:userAdded});
+    localStorage.setItem(HASH_KEY,hash);
+    clearChangeBadge(); setSyncDot('ok'); return true;
+  } catch { setSyncDot('err'); return false; }
+}
+function saveEdit(recId,changes) {
+  userEdits[recId]={...(userEdits[recId]||{}), ...changes};
+  localStorage.setItem(EDITS_KEY,JSON.stringify(userEdits));
+  pushToBin();
+}
+async function pullAndDismiss() { clearChangeBadge(); await pullFromBin(); }
+
+// ── FILTERING ─────────────────────────────────────────────────
+function getFiltered() {
+  return getAllData().map((r,i)=>{return{r,i};}).filter(x=>{
+    const r=x.r;
+    if (activeType==='MT') {
+      const rtypes=r.types&&r.types.length?r.types:[r.type];
+      return rtypes.includes('Chiropractor') && hasMassage(r);
+    }
+    if (activeType!=='All') {
+      const rtypes=r.types&&r.types.length?r.types:[r.type];
+      if (!rtypes.includes(activeType)) return false;
+    }
+    if (activeSub) {
+      const sp=(r.specialty||'').split(',').map(s=>s.trim());
+      if (!sp.includes(activeSub)) return false;
+    }
+    return true;
+  });
+}
+function matchSearch(r) {
+  if (!refSearch) return true;
+  return [r.office,r.doctor,r.specialty,r.city,r.county,r.notes,...(r.doctors||[]).map(d=>d.name+' '+d.specialty)].filter(Boolean).join(' ').toLowerCase().includes(refSearch);
+}
+function clearRefSearch() {
+  refSearch=''; document.getElementById('ref-search-input').value='';
+  document.getElementById('ref-search-clear').style.display='none';
+  renderMap(); renderList();
+}
+
+// ── SUBFILTER ─────────────────────────────────────────────────
+function buildSubfilter() {
+  const wrap=document.getElementById('subfilter-wrap'), sel=document.getElementById('subfilter');
+  if (!['Attorney','Doctor','IME Doctor'].includes(activeType)) { wrap.style.display='none'; activeSub=''; return; }
+  const specs=new Set();
+  getAllData().filter(r=>r.type===activeType&&r.specialty).forEach(r=>r.specialty.split(',').forEach(s=>{const t=s.trim();if(t)specs.add(t);}));
+  if (!specs.size) { wrap.style.display='none'; return; }
+  sel.innerHTML='<option value="">— All —</option>';
+  [...specs].sort().forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;if(s===activeSub)o.selected=true;sel.appendChild(o);});
+  document.getElementById('subfilter-label').textContent=activeType==='Attorney'?'Type of Law':'Specialty';
+  wrap.style.display='block';
+}
+function onSubChange() { activeSub=document.getElementById('subfilter').value; renderMap(); renderList(); if(clientPos) rerunClosest(); }
+
+// ── RENDER MAP ────────────────────────────────────────────────
+function makeMarker(r,idx) {
+  const c=getCoords(r); if(!c) return null;
+  const color=TYPE_COLORS[r.type]||'#7f1712';
+  const rank=top10.indexOf(idx), pref=isPreferred(r), mt=hasMassage(r);
+  const isMatch=!!(refSearch&&matchSearch(r));
+  const label=rank>=0?rank+1:'';
+  const stroke=isMatch?'#1a73e8':pref?'#f9c423':'white';
+  const sw=pref||isMatch?'2.5':'1.5';
+  const starDot=pref?`<circle cx="22" cy="5" r="5" fill="#f9c423" stroke="${color}" stroke-width="1.2"/><text x="22" y="8.5" text-anchor="middle" font-size="6" font-weight="bold" fill="${color}">★</text>`:'';
+  const mtDot=mt&&r.type==='Chiropractor'&&!pref?`<circle cx="22" cy="5" r="4.5" fill="#e91e8c" stroke="white" stroke-width="1"/><text x="22" y="8.5" text-anchor="middle" font-size="5.5" font-weight="bold" fill="white">M</text>`:'';
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+    <ellipse cx="14" cy="34" rx="5" ry="1.8" fill="rgba(0,0,0,.2)"/>
+    <path d="M14 1C7 1 2 7 2 13C2 23 14 34 14 34C14 34 26 23 26 13C26 7 21 1 14 1Z" fill="${color}" stroke="${stroke}" stroke-width="${sw}"/>
+    ${label?`<circle cx="14" cy="13" r="7" fill="white" opacity=".92"/><text x="14" y="17.5" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="800" fill="${color}" font-family="Arial">${label}</text>`:''}
+    ${starDot}${mtDot}</svg>`;
+  const icon=L.divIcon({html:svg,className:'',iconSize:[28,36],iconAnchor:[14,34],popupAnchor:[0,-34]});
+  const m=L.marker([c.lat,c.lng],{icon,zIndexOffset:rank>=0?2000-rank*10:pref?800:isMatch?500:0});
+  const recId=getRecId(r), teamNote=getEdit(r).teamNotes||'';
+
+  // Build popup
+  const isUser=!!r.userAdded;
+  const rAllTypes=r.types&&r.types.length?r.types.join(' · '):r.type;
+  let p=`<div class="popup-tag">${rAllTypes}${isUser?' ✦':''}</div>`;
+  if (pref) p+=`<div class="popup-pref">⭐ Preferred</div>`;
+  if (mt&&r.type==='Chiropractor') p+=`<div class="popup-massage">💆 Has MT</div>`;
+  p+=`<div class="popup-name">${r.office||'—'}</div>`;
+  // Show all doctors (base or array)
+  const docs=r.doctors&&r.doctors.length?r.doctors:(r.doctor?[{name:r.doctor,specialty:r.specialty}]:[]);
+  docs.forEach(d=>{ if(d.name) p+=`<div class="popup-doctor">${d.name}${d.specialty?' — '+d.specialty:''}</div>`; });
+  if (!docs.length&&r.specialty) p+=`<div class="popup-row">📌 ${r.specialty}</div>`;
+  if (r.phone) p+=`<div class="popup-row">📞 ${r.phone}</div>`;
+  if (r.address||r.city) p+=`<div class="popup-row">📍 ${[r.address,r.city,r.state].filter(Boolean).join(', ')}</div>`;
+  const note=[r.notes,r.extra].filter(x=>x&&!x.endsWith(': ')&&x!=='Splits: ').join(' | ');
+  if (note||teamNote) p+=`<div class="popup-notes">${[note,teamNote&&'📝 '+teamNote].filter(Boolean).join('<br>')}</div>`;
+  // Popup action buttons
+  p+=`<div class="popup-actions">
+    <button onclick="popPref('${recId}')" style="padding:4px 10px;border:none;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;font-family:inherit;background:${pref?'#f9c423':'#f5f5f5'};color:${pref?'#333':'#888'};border:1px solid ${pref?'#e6b31e':'#ddd'}">${pref?'⭐ Preferred':'☆ Preferred'}</button>
+    ${r.type==='Chiropractor'?`<button onclick="popMT('${recId}')" style="padding:4px 10px;border:none;border-radius:6px;font-size:.7rem;font-weight:600;cursor:pointer;font-family:inherit;background:${mt?'#e91e8c':'#f5f5f5'};color:${mt?'#fff':'#888'};border:1px solid ${mt?'#c2185b':'#ddd'}">${mt?'💆 Has MT':'💆 Add MT'}</button>`:''}
+  </div>`;
+
+  m.bindPopup(p,{maxWidth:260});
+  m._recIdx=idx; m._recId=recId;
+  m.on('click',()=>{highlightItem(idx);if(isMobile())snapSheet(SNAP.half);});
+  return m;
+}
+
+function popPref(recId) {
+  const r=getAllData().find(x=>getRecId(x)===recId);
+  const cur=r?isPreferred(r):false, isAuto=AUTO_PREF.has(recId);
+  if (isAuto) {
+    const ed={...(userEdits[recId]||{})};
+    if (cur) { ed.preferred=false; ed.prefOverride=false; }
+    else { delete ed.prefOverride; ed.preferred=true; }
+    userEdits[recId]=ed; localStorage.setItem(EDITS_KEY,JSON.stringify(userEdits)); pushToBin();
+  } else { saveEdit(recId,{preferred:!cur}); }
+  map.closePopup(); renderMap(); renderList();
+}
+function popMT(recId) {
+  saveEdit(recId,{hasMassage:!(userEdits[recId]?.hasMassage||false)});
+  map.closePopup(); renderMap(); renderList();
+}
+
+function renderMap() {
+  markerLayer.clearLayers();
+  getFiltered().forEach(x=>{
+    if (refSearch&&!matchSearch(x.r)) return;
+    const m=makeMarker(x.r,x.i); if(m) markerLayer.addLayer(m);
+  });
+  updateCount();
+}
+
+// ── RENDER LIST ───────────────────────────────────────────────
+function renderList() {
+  const list=document.getElementById('results-list'); list.innerHTML='';
+  let items=getFiltered();
+  if (refSearch) items=items.filter(x=>matchSearch(x.r));
+  if (top10.length&&!refSearch) {
+    const tset=new Set(top10);
+    const near=top10.map(i=>items.find(x=>x.i===i)).filter(Boolean);
+    const rest=items.filter(x=>!tset.has(x.i)).sort((a,b)=>(a.r.office||'').localeCompare(b.r.office||''));
+    items=[...near,...rest];
+  } else { items.sort((a,b)=>(a.r.office||'').localeCompare(b.r.office||'')); }
+
+  const geo=items.filter(x=>getCoords(x.r));
+  const cnt=refSearch?`${geo.length} match${geo.length!==1?'es':''}`:`${geo.length} mapped`;
+  document.getElementById('results-count').textContent=cnt;
+  const pk=document.getElementById('sheet-peek-count'); if(pk) pk.textContent=cnt;
+  document.getElementById('results-label').textContent=refSearch?'Search Results':'Referrals';
+  document.getElementById('no-results').style.display=geo.length===0?'block':'none';
+
+  items.forEach(x=>{
+    const r=x.r, i=x.i;
+    const c=getCoords(r); if(!c) return;
+    const rank=top10.indexOf(i), pref=isPreferred(r), mt=hasMassage(r);
+    const recId=getRecId(r), teamNote=getEdit(r).teamNotes||'', isUser=!!r.userAdded;
+    const div=document.createElement('div');
+    div.className='result-item'+(rank===0?' r-nearest':rank>0&&rank<5?' r-top5':'')+(refSearch&&matchSearch(r)?' r-search-match':'');
+    div.dataset.idx=i;
+    const rHtml=rank===0?'<div class="result-rank">1</div>':rank>0?`<div class="result-rank gold">${rank+1}</div>`:'';
+    const dVal=clientPos?haverDist(clientPos.lat,clientPos.lng,c.lat,c.lng):null;
+    const dHtml=dVal!==null?`<div class="result-dist">${dVal.toFixed(1)} mi</div>`:'';
+    const pad=rHtml?'24':'0';
+    const autoP=AUTO_PREF.has(recId);
+    const prefLabel=pref?(autoP&&!(getEdit(r).preferred)?'⭐ Auto-Pref':'⭐ Preferred'):'☆ Preferred';
+    // Doctor display (supports multi-doctor)
+    const docs=r.doctors&&r.doctors.length?r.doctors:(r.doctor?[{name:r.doctor,specialty:r.specialty}]:[]);
+    const docHtml=docs.map(d=>d.name?`<div class="result-doctor">${d.name}${d.specialty?' — '+d.specialty:''}</div>`:'').join('');
+    div.innerHTML=`
+      <div class="result-top">
+        ${rHtml}
+        <div class="result-info">
+          <div class="result-name">${pref?'<span class="pref-star">⭐</span>':''}</div>
+          ${docHtml}
+          <div class="result-meta">${[r.specialty,r.city].filter(Boolean).join(' · ')}</div>
+          ${dHtml}<div class="expand-hint">▸ Tap for details</div>
+        </div>
+        ${isUser?`<button style="background:none;border:none;color:#ddd;cursor:pointer;font-size:.8rem;padding:2px 4px;align-self:flex-start;margin-top:1px" onclick="deleteAdded('${recId}',event)">🗑</button>`:''}
+      </div>
+      <div class="result-actions" style="padding-left:${pad}px">
+        <button class="pref-badge ${pref?'on':'off'}" onclick="togglePref('${recId}',event)">${prefLabel}</button>
+        ${r.type==='Chiropractor'?`<button class="massage-badge ${mt?'on':'off'}" onclick="toggleMT('${recId}',event)">${mt?'💆 Has MT':'💆 MT'}</button>`:''}
+        <button class="action-btn" onclick="openNote('${recId}','${i}',event)">📝 Note</button>
+      </div>
+      <div class="result-notes" id="rn-${i}"></div>`;
+    // Set office name (workaround for f-string conflict)
+    div.querySelector('.result-name').innerHTML=(pref?'<span class="pref-star">⭐</span>':'')+(r.office||'—');
+
+    div.querySelector('.result-top').addEventListener('click',e=>{
+      if(e.target.closest('button[onclick*="deleteAdded"]')) return;
+      const ne=document.getElementById(`rn-${i}`);
+      if (ne.style.display==='block') { ne.style.display='none'; div.querySelector('.expand-hint').textContent='▸ Tap for details'; }
+      else {
+        buildNotes(ne,r,i,recId);ne.style.display='block';
+        div.querySelector('.expand-hint').textContent='▾ Collapse';
+        map.setView([c.lat,c.lng],14); markerLayer.eachLayer(m=>{if(m._recIdx===i)m.openPopup();});
+        if(isMobile()) snapSheet(SNAP.full);
+      }
+    });
+    list.appendChild(div);
+  });
+}
+
+function buildNotes(ne,r,i,recId) {
+  const edit=getEdit(r), teamNote=edit.teamNotes||'', pref=isPreferred(r), mt=hasMassage(r);
+  const c=getCoords(r);
+  let h='<div class="notes-detail">';
+  if(r.phone) h+=`<div class="nd-row"><span class="nd-label">Phone:</span> ${r.phone}</div>`;
+  if(r.address||r.city) h+=`<div class="nd-row"><span class="nd-label">Address:</span> ${[r.address,r.city,r.state].filter(Boolean).join(', ')}</div>`;
+  if(c&&c.formatted) h+=`<div class="nd-row" style="color:#4CAF50;font-size:.66rem">✓ ${c.formatted}</div>`;
+  if(r.specialty) h+=`<div class="nd-row"><span class="nd-label">Specialty:</span> ${r.specialty}</div>`;
+  // Multiple doctors
+  const docs=r.doctors&&r.doctors.length?r.doctors:(r.doctor?[{name:r.doctor,specialty:r.specialty}]:[]);
+  docs.forEach(d=>{ if(d.name) h+=`<div class="nd-row"><span class="nd-label">Doctor:</span> ${d.name}${d.specialty?' ('+d.specialty+')':''}</div>`; });
+  if(r.notes) h+=`<div class="nd-row"><span class="nd-label">Notes:</span> ${r.notes}</div>`;
+  const ex=[r.extra].filter(x=>x&&!x.endsWith(': ')&&x!=='Splits: ').join('');
+  if(ex) h+=`<div class="nd-row">${ex}</div>`;
+  if(r.county) h+=`<div class="nd-row"><span class="nd-label">County:</span> ${r.county}</div>`;
+  if(pref) h+=`<div class="nd-row">⭐ <strong>Preferred Referral</strong></div>`;
+  if(mt&&r.type==='Chiropractor') h+=`<div class="nd-row">💆 <strong>Has Massage Therapist</strong></div>`;
+  h+='</div>';
+  if(teamNote) h+=`<div class="team-note-display"><div class="tnd-label">📝 Team Note</div>${teamNote}</div>`;
+  h+=`<div class="team-note-box" id="tnb-${i}"><textarea class="team-note-area" id="tna-${i}" placeholder="Add a team note...">${teamNote}</textarea><div class="team-note-actions"><button class="note-save-btn" onclick="saveNote('${recId}','${i}')">Save</button><button class="note-cancel-btn" onclick="closeNoteBox('${i}')">Cancel</button></div></div>`;
+  ne.innerHTML=h;
+}
+function openNote(recId,i,e) {
+  e&&e.stopPropagation();
+  const ne=document.getElementById(`rn-${i}`), item=document.querySelector(`.result-item[data-idx="${i}"]`);
+  if (ne.style.display!=='block') {
+    const r=getAllData()[parseInt(i)]; buildNotes(ne,r,parseInt(i),recId); ne.style.display='block';
+    const h=item&&item.querySelector('.expand-hint'); if(h) h.textContent='▾ Collapse';
+    if(isMobile()) snapSheet(SNAP.full);
+  }
+  const box=document.getElementById(`tnb-${i}`);
+  if(box) { box.style.display='block'; const a=document.getElementById(`tna-${i}`); if(a) setTimeout(()=>{a.focus();a.setSelectionRange(a.value.length,a.value.length);},100); }
+}
+function closeNoteBox(i) { const b=document.getElementById(`tnb-${i}`); if(b) b.style.display='none'; }
+function saveNote(recId,i) {
+  const a=document.getElementById(`tna-${i}`); if(!a) return;
+  saveEdit(recId,{teamNotes:a.value.trim()}); closeNoteBox(i);
+  const ne=document.getElementById(`rn-${i}`), r=getAllData()[parseInt(i)];
+  if(ne&&r) buildNotes(ne,r,parseInt(i),recId); renderMap();
+}
+function togglePref(recId,e) { e&&e.stopPropagation(); popPref(recId); }
+function toggleMT(recId,e) { e&&e.stopPropagation(); popMT(recId); renderList(); }
+function deleteAdded(recId,e) {
+  e&&e.stopPropagation();
+  const r=userAdded.find(x=>getRecId(x)===recId); if(!r||!confirm(`Delete "${r.office}"?`)) return;
+  userAdded=userAdded.filter(x=>getRecId(x)!==recId);
+  localStorage.setItem(ADDED_KEY,JSON.stringify(userAdded));
+  pushToBin(); renderMap(); renderList();
+}
+function highlightItem(idx) {
+  const el=document.querySelector(`.result-item[data-idx="${idx}"]`);
+  if(el){el.scrollIntoView({block:'nearest',behavior:'smooth'});el.style.outline='2px solid #7f1712';setTimeout(()=>el.style.outline='',2000);}
+}
+
+// ── CLOSEST ───────────────────────────────────────────────────
+function updateFindBtn() { document.getElementById('addr-btn').disabled=!getSender(); }
+function showWhoHint() {
+  const h=document.getElementById('who-hint'); h.style.display='block';
+  setTimeout(()=>h.style.display='none',3000); document.getElementById('who-select').focus();
+}
+async function findClosest() {
+  const addr=document.getElementById('addr-input').value.trim(); if(!addr) return;
+  closeAC(); geocodeAndFind(addr);
+}
+async function geocodeAndFind(addr) {
+  const st=document.getElementById('addr-status'), btn=document.getElementById('addr-btn');
+  st.textContent='🔍 Locating...'; btn.disabled=true;
+  const result=await fetchGeo(addr); btn.disabled=false; updateFindBtn();
+  if (!result) { st.innerHTML='❌ Not found.<br><span style="font-size:.63rem;color:#888">Try: 123 Main St, Hamilton, OH 45011</span>'; return; }
+  st.textContent=`📍 ${result.formatted||'Located'}`;
+  document.getElementById('clear-btn').style.display='block';
+  if(isMobile()) snapSheet(SNAP.half);
+  findFromCoords(result);
+}
+function findFromCoords(pos) {
+  clientPos=pos;
+  if(clientMarker) map.removeLayer(clientMarker);
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">
+    <ellipse cx="15" cy="38" rx="6" ry="2.5" fill="rgba(0,0,0,.2)"/>
+    <path d="M15 1C8 1 2 8 2 15C2 26 15 38 15 38S28 26 28 15C28 8 22 1 15 1Z" fill="#1a73e8" stroke="white" stroke-width="2"/>
+    <circle cx="15" cy="15" r="7" fill="white" opacity=".95"/>
+    <text x="15" y="19.5" text-anchor="middle" font-size="7.5" font-weight="bold" fill="#1a73e8" font-family="Arial">YOU</text></svg>`;
+  clientMarker=L.marker([pos.lat,pos.lng],{icon:L.divIcon({html:svg,className:'',iconSize:[30,40],iconAnchor:[15,38]}),zIndexOffset:9999})
+    .bindPopup(`📍 <b>${pos.formatted||'Client Address'}</b>`).addTo(map);
+  rerunClosest();
+}
+function clearSearch() {
+  if(clientMarker){map.removeLayer(clientMarker);clientMarker=null;}
+  clientPos=null;top10=[];selectedPicks=[];
+  document.getElementById('addr-input').value='';
+  document.getElementById('addr-status').textContent='';
+  document.getElementById('no-refs-msg').style.display='none';
+  document.getElementById('msg-strip-hint').textContent='Search an address first';
+  document.getElementById('clear-btn').style.display='none';
+
+  msgOpen=false; map.setView([39.5,-83.4],8); renderMap(); renderList();
+}
+function rerunClosest() {
+  if (!clientPos) return;
+  const withDist=getFiltered().map(x=>{
+    const c=getCoords(x.r); if(!c) return null;
+    return {i:x.i,r:x.r,dist:haverDist(clientPos.lat,clientPos.lng,c.lat,c.lng)};
+  }).filter(Boolean).sort((a,b)=>a.dist-b.dist);
+  document.getElementById('no-refs-msg').style.display=(!withDist.length||withDist[0].dist>DRIVE_MI)?'block':'none';
+  top10=withDist.slice(0,10).map(x=>x.i);
+  if(withDist.length) {
+    const bounds=L.latLngBounds([[clientPos.lat,clientPos.lng]]);
+    top10.slice(0,5).forEach(i=>{const c=getCoords(getAllData()[i]);if(c)bounds.extend([c.lat,c.lng]);});
+    map.fitBounds(bounds.pad(0.12));
+  }
+  renderMap(); renderList(); buildMessage(withDist.slice(0,10));
+}
+
+// ── MESSAGE ───────────────────────────────────────────────────
+function buildMessage(top10items) {
+  var hint=document.getElementById('msg-strip-hint');
+  if(hint) hint.textContent='Tap to open ▤';
+  var sorted=[...top10items].sort((a,b)=>{var ap=isPreferred(a.r),bp=isPreferred(b.r);if(ap!==bp)return ap?-1:1;return a.dist-b.dist;});
+  selectedPicks=sorted.slice(0,3).map(x=>x.i);
+  window._top10items=sorted;
+  renderPicks(sorted);
+  updateMsgText(sorted);
+}
+function openMsgModal() {
+  document.getElementById('msg-modal-overlay').classList.add('open');
+  if (window._top10items) { renderPicks(window._top10items); updateMsgText(window._top10items); }
+}
+function closeMsgModal() {
+  document.getElementById('msg-modal-overlay').classList.remove('open');
+}
+function closeMsgModalOutside(e) {
+  if (e.target.id==='msg-modal-overlay') closeMsgModal();
+}
+function toggleMsg() { openMsgModal(); } // keep for any legacy calls
+function renderPicks(items) {
+  const cont=document.getElementById('referral-picks'); cont.innerHTML='';
+  items.forEach(item=>{
+    const r=item.r, checked=selectedPicks.includes(item.i), pref=isPreferred(r);
+    const lbl=document.createElement('label'); lbl.className='pick-item'+(pref?' pick-pref':'');
+    lbl.innerHTML=`<input type="checkbox" ${checked?'checked':''}/>
+      ${pref?'<span class="pick-star">⭐</span>':''}
+      <span class="pick-name">${r.office||'—'}${r.doctor?' — '+r.doctor:''}</span>
+      <span class="pick-dist">${item.dist.toFixed(1)} mi</span>`;
+    lbl.querySelector('input').addEventListener('change',function(){
+      if(this.checked){if(!selectedPicks.includes(item.i))selectedPicks.push(item.i);}
+      else selectedPicks=selectedPicks.filter(x=>x!==item.i);
+      updateMsgText(items);
+    });
+    cont.appendChild(lbl);
+  });
+  window._top10items=items;
+}
+function updateMsgText(items) {
+  const picks=items.filter(x=>selectedPicks.includes(x.i));
+  const type=activeType==='All'?'referral':activeType==='MT'?'chiropractor':activeType.toLowerCase();
+  const plural=type.endsWith('y')?type.slice(0,-1)+'ies':type+'s';
+  const sender=getSender();
+  let msg=`Hi! Based on your address, here are the closest ${picks.length} ${plural} we recommend:\n\n`;
+  picks.forEach((item,n)=>{
+    const r=item.r;
+    msg+=`${n+1}. ${r.office||'—'}`;
+    if(r.doctor) msg+=`\n   ${r.doctor}`;
+    if(r.phone) msg+=`\n   📞 ${r.phone}`;
+    if(r.address||r.city) msg+=`\n   📍 ${[r.address,r.city,r.state].filter(Boolean).join(', ')}`;
+    msg+='\n\n';
+  });
+  msg+='Please let us know if you have any questions!';
+  if(sender) msg+=`\n\n— ${sender}`;
+  document.getElementById('msg-box').value=msg;
+}
+function resetMessage() { if(window._top10items){selectedPicks=window._top10items.slice(0,3).map(x=>x.i);renderPicks(window._top10items);updateMsgText(window._top10items);} }
+async function copyMessage() {
+  const txt=document.getElementById('msg-box').value;
+  if (!txt.trim()) return;
+  try{await navigator.clipboard.writeText(txt);}catch{const ta=document.getElementById('msg-box');ta.select();document.execCommand('copy');}
+  const btn=document.getElementById('copy-btn'); btn.textContent='✓ Copied!'; btn.classList.add('copied');
+  setTimeout(()=>{btn.textContent='Copy Message';btn.classList.remove('copied');},2000);
+  setTimeout(()=>closeMsgModal(), 1800);
+}
+
+// ── MODAL SYSTEM ──────────────────────────────────────────────
+let currentModal='';
+function openModal(which) {
+  currentModal=which;
+  document.getElementById('modal-overlay').classList.add('open');
+  if (which==='add') buildAddModal();
+  else if (which==='manage') buildManageModal();
+  else if (which==='sync') buildSyncModal();
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
+function closeModalOutside(e) { if(e.target.id==='modal-overlay') closeModal(); }
+
+function buildAddModal() {
+  document.getElementById('modal-title').textContent='Add Referral';
+  document.getElementById('modal-body').innerHTML=`
+    <div class="modal-tabs">
+      <div class="modal-tab active" onclick="switchTab('add-tab','add-tab')">Add New</div>
+      <div class="modal-tab" onclick="switchTab('manage-tab','add-tab')">Manage Added</div>
+    </div>
+    <div class="tab-pane active" id="add-tab">
+      <div class="form-grid">
+        <div class="fg full"><label>Type <span class="req">*</span> <span style="font-weight:400;text-transform:none;font-size:.65rem;color:#888">— select all that apply</span></label>
+          <div id="f-types" style="display:flex;flex-wrap:wrap;gap:7px;padding:6px 0">
+            <label style="display:flex;align-items:center;gap:5px;font-size:.79rem;font-weight:400;cursor:pointer;text-transform:none;letter-spacing:0;color:#333"><input type="checkbox" value="Chiropractor" style="accent-color:#7f1712;width:15px;height:15px"> Chiropractor</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.79rem;font-weight:400;cursor:pointer;text-transform:none;letter-spacing:0;color:#333"><input type="checkbox" value="Doctor" style="accent-color:#7f1712;width:15px;height:15px"> Doctor</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.79rem;font-weight:400;cursor:pointer;text-transform:none;letter-spacing:0;color:#333"><input type="checkbox" value="IME Doctor" style="accent-color:#7f1712;width:15px;height:15px"> IME Doctor</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.79rem;font-weight:400;cursor:pointer;text-transform:none;letter-spacing:0;color:#333"><input type="checkbox" value="Attorney" style="accent-color:#7f1712;width:15px;height:15px"> Attorney</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.79rem;font-weight:400;cursor:pointer;text-transform:none;letter-spacing:0;color:#333"><input type="checkbox" value="Other" style="accent-color:#7f1712;width:15px;height:15px"> Other</label>
+          </div>
+        </div>
+        <div class="fg full"><label>Office / Firm Name <span class="req">*</span></label>
+          <input id="f-office" type="text" placeholder="e.g. Smith Chiropractic"/>
+        </div>
+        <div class="fg"><label>Phone</label><input id="f-phone" type="text" placeholder="513-000-0000"/></div>
+        <div class="fg"><label>Specialty / Type of Law</label><input id="f-specialty" type="text"/></div>
+        <div class="fg full"><label>Doctors / Providers</label>
+          <div id="doctor-rows"></div>
+          <button class="add-doc-btn" onclick="addDoctorRow()">+ Add Doctor / Provider</button>
+        </div>
+        <div class="fg full"><label>Street Address <span class="req">*</span></label>
+          <input id="f-address" type="text" placeholder="123 Main St"/>
+        </div>
+        <div class="fg"><label>City <span class="req">*</span></label><input id="f-city" type="text"/></div>
+        <div class="fg"><label>State</label><input id="f-state" type="text" placeholder="OH" maxlength="2"/></div>
+        <div class="fg"><label>County</label><input id="f-county" type="text"/></div>
+        <div class="fg"><label>Email</label><input id="f-email" type="text"/></div>
+        <div class="fg full" id="f-massage-wrap" style="display:none"><label>Has Massage Therapist?</label>
+          <select id="f-massage"><option value="0">No</option><option value="1">Yes</option></select>
+        </div>
+        <div class="fg full"><label>Notes</label><textarea id="f-notes" placeholder="Any additional notes..."></textarea></div>
+      </div>
+      <div class="form-status" id="form-status"></div>
+      <div class="form-actions">
+        <button class="btn-secondary" onclick="closeModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitReferral()">Save Referral</button>
+      </div>
+    </div>
+    <div class="tab-pane" id="manage-tab">
+      <div id="manage-list"></div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee">
+        <button class="btn-secondary" style="width:100%" onclick="exportCSV()">⬇ Export CSV</button>
+      </div>
+    </div>`;
+  addDoctorRow(); // start with one empty doctor row
+  // Show massage field only when Chiropractor is checked
+  setTimeout(()=>{
+    document.querySelectorAll('#f-types input[type=checkbox]').forEach(cb=>{
+      cb.addEventListener('change',()=>{
+        const hasChiro=[...document.querySelectorAll('#f-types input:checked')].some(c=>c.value==='Chiropractor');
+        const wrap=document.getElementById('f-massage-wrap');
+        if(wrap) wrap.style.display=hasChiro?'':'none';
+      });
+    });
+  },50);
+}
+function switchTab(showId,parentId) {
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.modal-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(showId).classList.add('active');
+  const tabs=document.querySelectorAll('.modal-tab');
+  tabs.forEach(t=>{ if(t.getAttribute('onclick')&&t.getAttribute('onclick').includes(showId)) t.classList.add('active'); });
+  if(showId==='manage-tab') buildManageList();
+}
+function addDoctorRow() {
+  const cont=document.getElementById('doctor-rows');
+  const idx=cont.children.length;
+  const row=document.createElement('div'); row.className='doctor-row';
+  row.innerHTML=`<input type="text" placeholder="Doctor name" id="doc-name-${idx}"/>
+    <input type="text" placeholder="Specialty" id="doc-spec-${idx}"/>
+    <button class="remove-doc-btn" onclick="this.parentElement.remove()">✕</button>`;
+  cont.appendChild(row);
+}
+
+async function submitReferral() {
+  const typeBoxes=document.querySelectorAll('#f-types input:checked');
+  const types=[...typeBoxes].map(cb=>cb.value);
+  const type=types[0]||''; // primary type used for map pin color
+  const office=document.getElementById('f-office').value.trim();
+  const address=document.getElementById('f-address').value.trim();
+  const city=document.getElementById('f-city').value.trim();
+  const st=document.getElementById('form-status');
+  if(!types.length){st.textContent='Please select at least one type.';st.className='form-status err';return;}
+  if(!office){st.textContent='Office/Firm name required.';st.className='form-status err';return;}
+  if(!address){st.textContent='Street address required.';st.className='form-status err';return;}
+  if(!city){st.textContent='City required.';st.className='form-status err';return;}
+
+  // Collect doctors
+  const doctorRows=document.getElementById('doctor-rows').children;
+  const doctors=[];
+  for(let i=0;i<doctorRows.length;i++){
+    const name=(document.getElementById(`doc-name-${i}`)||{}).value?.trim()||'';
+    const spec=(document.getElementById(`doc-spec-${i}`)||{}).value?.trim()||'';
+    if(name) doctors.push({name,specialty:spec});
+  }
+
+  const state=document.getElementById('f-state').value.trim()||'OH';
+  const rec={
+    id:'u_'+Date.now(), userAdded:true, type, types, office,
+    doctor:doctors.length?doctors[0].name:'',
+    doctors:doctors,
+    phone:document.getElementById('f-phone').value.trim(),
+    specialty:document.getElementById('f-specialty').value.trim(),
+    address, city, state,
+    county:document.getElementById('f-county').value.trim(),
+    hasMassage:document.getElementById('f-massage').value==='1',
+    notes:document.getElementById('f-notes').value.trim(),
+    extra:'Email: '+document.getElementById('f-email').value.trim()
+  };
+
+  st.textContent='Geocoding...'; st.className='form-status';
+  const coords=await fetchGeo([address,city,state].join(', '));
+  if(coords) { geocodeCache[geoKey(rec)]=coords; try{localStorage.setItem(CACHE_KEY,JSON.stringify(geocodeCache));}catch{} }
+  else { st.textContent='⚠️ Address not mapped — saved anyway.'; st.className='form-status err'; }
+
+  userAdded.push(rec); localStorage.setItem(ADDED_KEY,JSON.stringify(userAdded));
+  const pushed=await pushToBin();
+  if(coords) { st.textContent=pushed?'✓ Saved & synced!':'✓ Saved locally.'; st.className='form-status ok'; }
+  buildSubfilter(); renderMap(); renderList(); updateCount();
+  setTimeout(()=>{if(st.className.includes('ok'))buildAddModal();},2000);
+}
+
+function buildManageList() {
+  const cont=document.getElementById('manage-list');
+  if(!userAdded.length){cont.innerHTML='<div class="no-added">No added referrals yet.</div>';return;}
+  cont.innerHTML='';
+  [...userAdded].reverse().forEach(r=>{
+    const div=document.createElement('div'); div.className='mi';
+    const docs=r.doctors&&r.doctors.length?r.doctors.map(d=>d.name).join(', '):(r.doctor||'');
+    const rTypes=r.types&&r.types.length?r.types.join(', '):r.type;
+    div.innerHTML=`<div class="mi-type">${rTypes}</div>
+      <div class="mi-info">
+        <div class="mi-name">${r.office}${docs?' — '+docs:''}</div>
+        <div class="mi-meta">${[r.phone,r.city,r.state].filter(Boolean).join(' · ')}</div>
+        ${r.notes?`<div class="mi-meta">${r.notes}</div>`:''}
+      </div>
+      <button class="mi-del" onclick="deleteAdded('${getRecId(r)}')">Delete</button>`;
+    cont.appendChild(div);
+  });
+}
+function buildManageModal() { buildAddModal(); switchTab('manage-tab','add-tab'); }
+function exportCSV() {
+  if(!userAdded.length){alert('No added referrals.');return;}
+  const cols=['type','office','doctor','phone','specialty','address','city','state','county','notes'];
+  const rows=[cols.join(','),...userAdded.map(r=>cols.map(c=>`"${(r[c]||'').replace(/"/g,'""')}"`).join(','))];
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));
+  a.download='KH_Added_Referrals.csv'; a.click();
+}
+
+function buildSyncModal() {
+  document.getElementById('modal-title').textContent='⚙ Team Sync';
+  document.getElementById('modal-body').innerHTML=`
+    <div style="background:#f0fff4;border:1px solid #86efac;border-radius:8px;padding:12px;margin-bottom:14px">
+      <div style="font-size:.8rem;font-weight:700;color:#166534;margin-bottom:5px">✓ Pre-configured</div>
+      <div style="font-size:.72rem;color:#555;line-height:1.5;margin-bottom:10px">
+        JSONBin syncs preferred flags, massage flags, notes, and added referrals. Checks for team changes silently on open — shows a badge if something changed.
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:.72rem;color:#555;margin-bottom:10px">
+        <div class="sync-dot idle" id="sync-dot-modal"></div>
+        <span id="sync-modal-status">Ready</span>
+      </div>
+      <div class="sync-btn-row">
+        <button class="sync-action-btn" style="background:#7f1712;color:#fff" onclick="pullAndDismiss().then(()=>document.getElementById('sync-modal-status').textContent='Pulled ✓')">⬇ Pull Team Changes</button>
+        <button class="sync-action-btn" style="background:#f0f0f0;color:#555" onclick="pushToBin().then(ok=>document.getElementById('sync-modal-status').textContent=ok?'Pushed ✓':'Push failed')">⬆ Push My Changes</button>
+      </div>
+    </div>
+    <div style="font-size:.68rem;color:#999;line-height:1.6">
+      1 background check per open. Flags, notes, and added referrals push automatically. Free tier: 10,000 req/month.
+    </div>`;
+}
+
+// ── MOBILE SHEET ──────────────────────────────────────────────
+const SNAP = { mini:60, get half(){return Math.round(window.innerHeight*.50)}, get full(){return Math.round(window.innerHeight*.90)} };
+function snapSheet(h,anim=true) {
+  const panel=document.getElementById('panel'); if(!isMobile()) return;
+  if(!anim) panel.style.transition='none';
+  panel.style.height=h+'px';
+  if(!anim) setTimeout(()=>panel.style.transition='',50);
+  const mini=h<=SNAP.mini+10;
+  ['controls','results-section','msg-area'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display=mini?'none':(id==='results-section'?'flex':'');
+  });
+}
+function initSheet() {
+  if(!isMobile()) return; snapSheet(SNAP.half,false);
+  const drag=document.getElementById('sheet-drag'), panel=document.getElementById('panel');
+  drag.addEventListener('pointerdown',e=>{sheetDrag=true;sheetY0=e.clientY;sheetH0=panel.offsetHeight;panel.style.transition='none';drag.setPointerCapture(e.pointerId);e.preventDefault();});
+  drag.addEventListener('pointermove',e=>{if(!sheetDrag)return;panel.style.height=Math.max(SNAP.mini,Math.min(SNAP.full,sheetH0+(sheetY0-e.clientY)))+'px';e.preventDefault();});
+  drag.addEventListener('pointerup',()=>{
+    if(!sheetDrag) return; sheetDrag=false; panel.style.transition='';
+    const h=panel.offsetHeight, wh=window.innerHeight;
+    if(h<wh*.20) snapSheet(SNAP.mini); else if(h<wh*.70) snapSheet(SNAP.half); else snapSheet(SNAP.full);
+  });
+  drag.addEventListener('click',()=>{
+    if(Math.abs(sheetH0-document.getElementById('panel').offsetHeight)<8){
+      const h=document.getElementById('panel').offsetHeight;
+      if(h<=SNAP.mini+10) snapSheet(SNAP.half); else if(h<=SNAP.half+30) snapSheet(SNAP.full); else snapSheet(SNAP.mini);
+    }
+  });
+}
+
+// ── PANEL RESIZER (desktop) ───────────────────────────────────
+function initResizer() {
+  const resizer=document.getElementById('panel-resizer');
+  const resSec=document.getElementById('results-section');
+  if(!resizer||isMobile()) return;
+  resizer.addEventListener('pointerdown',e=>{
+    resDrag=true; resY0=e.clientY; resH0=resSec.offsetHeight;
+    resizer.setPointerCapture(e.pointerId); document.body.style.cursor='ns-resize';
+    document.body.style.userSelect='none'; e.preventDefault();
+  });
+  document.addEventListener('pointermove',e=>{
+    if(!resDrag) return;
+    const newH=Math.max(80,Math.min(600,resH0+(e.clientY-resY0)));
+    resSec.style.flex='none'; resSec.style.height=newH+'px';
+  });
+  document.addEventListener('pointerup',()=>{if(resDrag){resDrag=false;document.body.style.cursor='';document.body.style.userSelect='';}});
+}
+
+// ── HELPERS ───────────────────────────────────────────────────
+function updateCount() {
+  const all=getAllData();
+  document.getElementById('total-count').textContent=`${all.filter(r=>getCoords(r)).length}/${all.length} mapped`;
+}
+
+// ── INIT ──────────────────────────────────────────────────────
+function init() {
+  // Map
+  map=L.map('map',{zoomControl:false}).setView([39.5,-83.4],8);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+    attribution:'© CARTO © OpenStreetMap', subdomains:'abcd', maxZoom:20
+  }).addTo(map);
+  L.control.zoom({position:'bottomright'}).addTo(map);
+  markerLayer=L.layerGroup().addTo(map);
+
+  // Load persisted data
+  geocodeCache=JSON.parse(localStorage.getItem(CACHE_KEY)||'{}');
+  userEdits   =JSON.parse(localStorage.getItem(EDITS_KEY)||'{}');
+  userAdded   =JSON.parse(localStorage.getItem(ADDED_KEY)||'[]');
+
+  // Name selector
+  const savedWho=localStorage.getItem('kh_who')||'';
+  if(savedWho) document.getElementById('who-select').value=savedWho;
+  updateFindBtn();
+  document.getElementById('who-select').addEventListener('change',function(){localStorage.setItem('kh_who',this.value);updateFindBtn();});
+
+  // Type filter buttons
+  document.querySelectorAll('.type-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.type-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active'); activeType=btn.dataset.type; activeSub='';
+      buildSubfilter(); renderMap(); renderList();
+      if(clientPos) rerunClosest();
+      if(isMobile()&&document.getElementById('panel').offsetHeight<=SNAP.mini+10) snapSheet(SNAP.half);
+    });
+  });
+
+  // Search
+  document.getElementById('ref-search-input').addEventListener('input',function(){
+    refSearch=this.value.trim().toLowerCase();
+    document.getElementById('ref-search-clear').style.display=refSearch?'block':'none';
+    renderMap(); renderList();
+    if(refSearch.length>=3){
+      const hits=getFiltered().filter(x=>matchSearch(x.r)&&getCoords(x.r));
+      if(hits.length===1){const c=getCoords(hits[0].r);map.setView([c.lat,c.lng],15);markerLayer.eachLayer(m=>{if(m._recIdx===hits[0].i)m.openPopup();});}
+    }
+  });
+
+  // Address
+  const ai=document.getElementById('addr-input');
+  ai.addEventListener('input',debounceAC);
+  ai.addEventListener('keydown',e=>{if(e.key==='Enter'){if(!getSender()){showWhoHint();return;}closeAC();findClosest();}});
+  document.getElementById('addr-btn').addEventListener('click',()=>{if(!getSender()){showWhoHint();return;}closeAC();findClosest();});
+  document.addEventListener('click',e=>{if(!e.target.closest('.addr-wrap'))closeAC();});
+  document.addEventListener('touchstart',e=>{if(!e.target.closest('.addr-wrap'))closeAC();},{passive:true});
+
+  initSheet(); initResizer();
+  updateCount();
+  startGeocoding();
+  setTimeout(checkForTeamChanges,1500);
+}
+
+window.addEventListener('resize',()=>map.invalidateSize(),{passive:true});
+
+async function loadConfig() {
+  // Fetch API keys from public config bin (no auth needed — bin is set to public)
+  try {
+    const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG_BIN_ID}/latest`, {
+      headers: {'X-Bin-Meta': 'false'},
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!r.ok) throw new Error('Config load failed: ' + r.status);
+    const d = await r.json();
+    const cfg = d.record || d;
+    JB_KEY  = cfg.jb_key  || '';
+    JB_BIN  = cfg.jb_bin  || '';
+    GEO_KEY = cfg.geo_key || '';
+    init();
+  } catch(e) {
+    // Show friendly error if config can't load
+    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;font-family:sans-serif;color:#7f1712;gap:12px;padding:20px;text-align:center">
+      <div style="font-size:2rem">⚠️</div>
+      <div style="font-size:1.1rem;font-weight:700">Could not load configuration</div>
+      <div style="font-size:.85rem;color:#666;max-width:400px">Check your internet connection and try refreshing. If the problem persists, contact Nicole.</div>
+      <button onclick="location.reload()" style="padding:10px 20px;background:#7f1712;color:#fff;border:none;border-radius:8px;font-size:.9rem;cursor:pointer;margin-top:8px">Retry</button>
+    </div>`;
+  }
+}
+loadConfig();
+</script>
+
+<!-- MESSAGE MODAL -->
+<div class="modal-overlay" id="msg-modal-overlay" onclick="closeMsgModalOutside(event)">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header" style="justify-content:space-between">
+      <h2>📋 Recommendation Message</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button onclick="resetMessage()" style="background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;padding:5px 10px;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">Reset</button>
+        <button class="modal-close" onclick="closeMsgModal()">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <div style="font-size:.67rem;font-weight:700;text-transform:uppercase;color:#7f1712;letter-spacing:.5px;margin-bottom:7px">Select Referrals to Include</div>
+        <div id="referral-picks" style="max-height:240px;overflow-y:auto"></div>
+      </div>
+      <div>
+        <div style="font-size:.67rem;font-weight:700;text-transform:uppercase;color:#7f1712;letter-spacing:.5px;margin-bottom:7px">Message</div>
+        <textarea id="msg-box" placeholder="Search a client address first to generate the message..."></textarea>
+      </div>
+      <button id="copy-btn" onclick="copyMessage()">Copy Message</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

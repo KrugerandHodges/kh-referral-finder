@@ -341,7 +341,7 @@ const HASH_KEY  = 'kh_hash_v1';
 const DRIVE_MI  = 15;
 const OH_BB     = '-84.82,38.40,-80.52,42.33';
 // Config loaded at startup from a public JSONBin bin — no keys in source code
-const CONFIG_BIN_ID = '69e1126536566621a8be76e8';
+const CONFIG_BIN_ID = 'REPLACE_WITH_CONFIG_BIN_ID'; // filled in during setup
 let JB_KEY  = '';
 let JB_BIN  = '';
 let GEO_KEY = '';
@@ -548,6 +548,12 @@ async function checkForTeamChanges() {
     const lastHash=localStorage.getItem(HASH_KEY)||'';
     if (!lastHash) { localStorage.setItem(HASH_KEY,remoteHash); return; }
     if (remoteHash!==lastHash) showChangeBadge();
+    // Pull activity in background on every open so Nicole always has latest
+    const remoteActivity=rec.activity||[];
+    const allA=[...remoteActivity,...activityLog];
+    const seenA=new Set();
+    activityLog=allA.filter(e=>{const k=e.ts+e.who+e.action;if(seenA.has(k))return false;seenA.add(k);return true;}).slice(0,500);
+    try{localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activityLog));}catch{}
   } catch {}
 }
 
@@ -557,13 +563,31 @@ async function pullFromBin() {
     const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}/latest`,{headers:{'X-Master-Key':JB_KEY,'X-Bin-Meta':'false'},signal:AbortSignal.timeout(9000)});
     if (!r.ok) throw new Error(r.status);
     const d=await r.json(), rec=d.record||d;
+    // Merge edits (remote wins on conflict)
     userEdits={...userEdits,...(rec.edits||{})};
-    userAdded=rec.added||[];
+    // Merge added referrals by ID — keeps local ones not on remote, adds remote ones not local
+    const remoteAdded=rec.added||[];
+    const localIds=new Set(userAdded.map(x=>x.id));
+    const remoteIds=new Set(remoteAdded.map(x=>x.id));
+    // Add remote records we don't have locally
+    remoteAdded.forEach(r2=>{ if(!localIds.has(r2.id)) userAdded.push(r2); });
+    // Remove local records that were deleted remotely (not in remote list at all)
+    // Only remove if the remote list is non-empty (to avoid wiping on first sync)
+    if(remoteAdded.length>0) userAdded=userAdded.filter(r2=>remoteIds.has(r2.id)||!r2._syncedBefore);
+    // Mark all current records as synced
+    userAdded.forEach(r2=>r2._syncedBefore=true);
+    // Log the pull activity
+    logActivity('pull', getSender(), '');
     localStorage.setItem(EDITS_KEY,JSON.stringify(userEdits));
     localStorage.setItem(ADDED_KEY,JSON.stringify(userAdded));
     localStorage.setItem(HASH_KEY,simpleHash({edits:rec.edits||{},added:rec.added||[]}));
     clearChangeBadge(); setSyncDot('ok');
-    // geocode any newly added referrals
+    // Also pull latest activity log
+    const ra=rec.activity||[];
+    const allA=[...ra,...activityLog];
+    const seenA=new Set();
+    activityLog=allA.filter(e=>{const k=e.ts+e.who+e.action;if(seenA.has(k))return false;seenA.add(k);return true;}).slice(0,500);
+    try{localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activityLog));}catch{}
     startGeocoding();
     renderMap(); renderList();
     return true;
@@ -579,7 +603,87 @@ async function pushToBin() {
     clearChangeBadge(); setSyncDot('ok'); return true;
   } catch { setSyncDot('err'); return false; }
 }
+// ── ACTIVITY LOG ──────────────────────────────────────────────
+const ACTIVITY_KEY='kh_activity_v1';
+let activityLog=[];
+
+function logActivity(action, who, detail) {
+  if (!who) return;
+  const entry={
+    who, action, detail,
+    ts: new Date().toISOString(),
+    month: new Date().toISOString().slice(0,7)
+  };
+  activityLog.unshift(entry);
+  if(activityLog.length>500) activityLog=activityLog.slice(0,500);
+  try{localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activityLog));}catch{}
+  // Push to JSONBin so Nicole can see everyone's activity
+  pushActivityToBin();
+}
+
+async function pushActivityToBin() {
+  if(!JB_KEY||!JB_BIN) return;
+  // We store activity in a separate key inside the same bin
+  // Fetch current bin, merge activity, push back
+  try {
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}/latest`,{
+      headers:{'X-Master-Key':JB_KEY,'X-Bin-Meta':'false'},
+      signal:AbortSignal.timeout(6000)
+    });
+    if(!r.ok) return;
+    const d=await r.json(), rec=d.record||d;
+    // Merge: combine remote activity with local, dedupe by ts+who, keep newest 500
+    const remoteActivity=rec.activity||[];
+    const allActivity=[...activityLog, ...remoteActivity];
+    const seen=new Set();
+    const merged=allActivity.filter(e=>{
+      const key=e.ts+e.who+e.action;
+      if(seen.has(key)) return false;
+      seen.add(key); return true;
+    }).slice(0,500);
+    // Push full bin back with merged activity
+    await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json','X-Master-Key':JB_KEY},
+      body:JSON.stringify({edits:userEdits, added:userAdded, activity:merged})
+    });
+    // Update local copy with merged
+    activityLog=merged;
+    try{localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activityLog));}catch{}
+  } catch {}
+}
+
+async function pullActivityFromBin() {
+  if(!JB_KEY||!JB_BIN) return;
+  try {
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}/latest`,{
+      headers:{'X-Master-Key':JB_KEY,'X-Bin-Meta':'false'},
+      signal:AbortSignal.timeout(6000)
+    });
+    if(!r.ok) return;
+    const d=await r.json(), rec=d.record||d;
+    const remoteActivity=rec.activity||[];
+    const allActivity=[...remoteActivity,...activityLog];
+    const seen=new Set();
+    activityLog=allActivity.filter(e=>{
+      const key=e.ts+e.who+e.action;
+      if(seen.has(key)) return false;
+      seen.add(key); return true;
+    }).slice(0,500);
+    try{localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activityLog));}catch{}
+  } catch {}
+}
+
 function saveEdit(recId,changes) {
+  const r=getAllData().find(x=>getRecId(x)===recId);
+  const name=r?r.office:'';
+  if('preferred' in changes || 'prefOverride' in changes) {
+    logActivity('preferred', getSender(), name);
+  } else if('hasMassage' in changes) {
+    logActivity('massage', getSender(), name);
+  } else if('teamNotes' in changes) {
+    logActivity('note', getSender(), name);
+  }
   userEdits[recId]={...(userEdits[recId]||{}), ...changes};
   localStorage.setItem(EDITS_KEY,JSON.stringify(userEdits));
   pushToBin();
@@ -842,6 +946,7 @@ async function geocodeAndFind(addr) {
   const result=await fetchGeo(addr); btn.disabled=false; updateFindBtn();
   if (!result) { st.innerHTML='❌ Not found.<br><span style="font-size:.63rem;color:#888">Try: 123 Main St, Hamilton, OH 45011</span>'; return; }
   st.textContent=`📍 ${result.formatted||'Located'}`;
+  logActivity('search', getSender(), result.formatted||addr);
   document.getElementById('clear-btn').style.display='block';
   if(isMobile()) snapSheet(SNAP.half);
   findFromCoords(result);
@@ -1086,7 +1191,9 @@ async function submitReferral() {
   if(coords) { geocodeCache[geoKey(rec)]=coords; try{localStorage.setItem(CACHE_KEY,JSON.stringify(geocodeCache));}catch{} }
   else { st.textContent='⚠️ Address not mapped — saved anyway.'; st.className='form-status err'; }
 
+  rec.addedBy=getSender(); rec.addedAt=new Date().toISOString();
   userAdded.push(rec); localStorage.setItem(ADDED_KEY,JSON.stringify(userAdded));
+  logActivity('added', getSender(), rec.office);
   const pushed=await pushToBin();
   if(coords) { st.textContent=pushed?'✓ Saved & synced!':'✓ Saved locally.'; st.className='form-status ok'; }
   buildSubfilter(); renderMap(); renderList(); updateCount();
@@ -1123,23 +1230,130 @@ function exportCSV() {
 function buildSyncModal() {
   document.getElementById('modal-title').textContent='⚙ Team Sync';
   document.getElementById('modal-body').innerHTML=`
-    <div style="background:#f0fff4;border:1px solid #86efac;border-radius:8px;padding:12px;margin-bottom:14px">
-      <div style="font-size:.8rem;font-weight:700;color:#166534;margin-bottom:5px">✓ Pre-configured</div>
-      <div style="font-size:.72rem;color:#555;line-height:1.5;margin-bottom:10px">
-        JSONBin syncs preferred flags, massage flags, notes, and added referrals. Checks for team changes silently on open — shows a badge if something changed.
+    <div class="modal-tabs">
+      <div class="modal-tab active" onclick="switchSyncTab('sync-status-tab')">Sync</div>
+      <div class="modal-tab" onclick="switchSyncTab('sync-activity-tab')">Activity Log</div>
+    </div>
+    <div class="tab-pane active" id="sync-status-tab">
+      <div style="background:#f0fff4;border:1px solid #86efac;border-radius:8px;padding:12px;margin-bottom:12px">
+        <div style="font-size:.8rem;font-weight:700;color:#166534;margin-bottom:5px">✓ Pre-configured</div>
+        <div style="font-size:.72rem;color:#555;line-height:1.5;margin-bottom:10px">
+          JSONBin syncs preferred flags, massage flags, notes, and added referrals. Checks for team changes on open — shows a badge if something changed.
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:.72rem;color:#555;margin-bottom:10px">
+          <div class="sync-dot idle" id="sync-dot-modal"></div>
+          <span id="sync-modal-status">Ready</span>
+        </div>
+        <div class="sync-btn-row">
+          <button class="sync-action-btn" style="background:#7f1712;color:#fff" onclick="pullAndDismiss().then(()=>{document.getElementById('sync-modal-status').textContent='Pulled ✓';buildSyncModal();openModal('sync');})">⬇ Pull Team Changes</button>
+          <button class="sync-action-btn" style="background:#f0f0f0;color:#555" onclick="pushToBin().then(ok=>document.getElementById('sync-modal-status').textContent=ok?'Pushed ✓':'Push failed')">⬆ Push My Changes</button>
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;font-size:.72rem;color:#555;margin-bottom:10px">
-        <div class="sync-dot idle" id="sync-dot-modal"></div>
-        <span id="sync-modal-status">Ready</span>
-      </div>
-      <div class="sync-btn-row">
-        <button class="sync-action-btn" style="background:#7f1712;color:#fff" onclick="pullAndDismiss().then(()=>document.getElementById('sync-modal-status').textContent='Pulled ✓')">⬇ Pull Team Changes</button>
-        <button class="sync-action-btn" style="background:#f0f0f0;color:#555" onclick="pushToBin().then(ok=>document.getElementById('sync-modal-status').textContent=ok?'Pushed ✓':'Push failed')">⬆ Push My Changes</button>
+      <div style="font-size:.68rem;color:#999;line-height:1.6">
+        1 background check per open. Changes push automatically. Free tier: 10,000 req/month.
       </div>
     </div>
-    <div style="font-size:.68rem;color:#999;line-height:1.6">
-      1 background check per open. Flags, notes, and added referrals push automatically. Free tier: 10,000 req/month.
+    <div class="tab-pane" id="sync-activity-tab">
+      ${buildActivityHTML()}
     </div>`;
+}
+
+function switchSyncTab(id) {
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.modal-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const tabs=document.querySelectorAll('.modal-tab');
+  if(id==='sync-status-tab') tabs[0].classList.add('active');
+  else tabs[1].classList.add('active');
+}
+
+function buildActivityHTML() {
+  const now=new Date();
+  const thisMonth=now.toISOString().slice(0,7);
+  const lastMonth=new Date(now.getFullYear(),now.getMonth()-1).toISOString().slice(0,7);
+
+  // Stats this month — pulls and searches per person
+  const thisMonthLog=activityLog.filter(e=>e.month===thisMonth);
+  const people=new Set(thisMonthLog.map(e=>e.who));
+  const statsByPerson={};
+  people.forEach(who=>{
+    statsByPerson[who]={
+      pulls:  thisMonthLog.filter(e=>e.who===who&&e.action==='pull').length,
+      searches:thisMonthLog.filter(e=>e.who===who&&e.action==='search').length,
+      added:  thisMonthLog.filter(e=>e.who===who&&e.action==='added').length,
+    };
+  });
+  const pullsByPerson={}; // keep for legacy ref
+  Object.entries(statsByPerson).forEach(([w,s])=>{if(s.pulls>0)pullsByPerson[w]=s.pulls;});
+
+  // Action labels
+  const actionLabel={
+    pull:'Pulled changes', added:'Added referral', search:'Searched address',
+    preferred:'Toggled preferred', massage:'Toggled massage', note:'Saved note'
+  };
+  const actionColor={
+    pull:'#1a73e8', added:'#4CAF50', search:'#7f1712',
+    preferred:'#f9c423', massage:'#e91e8c', note:'#888'
+  };
+
+  let html='';
+
+  // Stats table
+  if(Object.keys(statsByPerson).length>0) {
+    html+=`<div style="background:#f8f8f8;border:1px solid #e0e0e0;border-radius:8px;padding:10px;margin-bottom:12px">
+      <div style="font-size:.72rem;font-weight:700;color:#7f1712;margin-bottom:8px">📊 Team Activity — ${thisMonth}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.72rem">
+        <thead><tr style="border-bottom:2px solid #ddd">
+          <th style="text-align:left;padding:4px 6px;color:#888;font-weight:600">Person</th>
+          <th style="text-align:center;padding:4px 6px;color:#7f1712;font-weight:600">🔍 Searches</th>
+          <th style="text-align:center;padding:4px 6px;color:#1a73e8;font-weight:600">⬇ Pulls</th>
+          <th style="text-align:center;padding:4px 6px;color:#4CAF50;font-weight:600">➕ Added</th>
+        </tr></thead>
+        <tbody>`;
+    Object.entries(statsByPerson).sort((a,b)=>(b[1].searches+b[1].pulls)-(a[1].searches+a[1].pulls)).forEach(([who,s])=>{
+      html+=`<tr style="border-bottom:1px solid #f0f0f0">
+        <td style="padding:5px 6px;font-weight:700;color:#222">${who}</td>
+        <td style="padding:5px 6px;text-align:center;color:#7f1712;font-weight:700">${s.searches||'—'}</td>
+        <td style="padding:5px 6px;text-align:center;color:#1a73e8;font-weight:700">${s.pulls||'—'}</td>
+        <td style="padding:5px 6px;text-align:center;color:#4CAF50;font-weight:700">${s.added||'—'}</td>
+      </tr>`;
+    });
+    html+=`</tbody></table></div>`;
+  }
+
+  // Recent activity
+  if(activityLog.length===0) {
+    html+='<div style="padding:20px;text-align:center;color:#aaa;font-size:.8rem">No activity recorded yet. Activity is tracked on this device.</div>';
+  } else {
+    html+='<div style="font-size:.67rem;font-weight:700;text-transform:uppercase;color:#7f1712;letter-spacing:.5px;margin-bottom:7px">Recent Activity</div>';
+    html+='<div style="max-height:300px;overflow-y:auto">';
+    activityLog.slice(0,50).forEach(e=>{
+      const d=new Date(e.ts);
+      const dateStr=d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      const timeStr=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+      const color=actionColor[e.action]||'#888';
+      const label=actionLabel[e.action]||e.action;
+      html+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid #f0f0f0">
+        <div style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0;margin-top:4px"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.75rem;font-weight:700;color:#222">${e.who} <span style="font-weight:400;color:#888">— ${label}</span></div>
+          ${e.detail?`<div style="font-size:.68rem;color:#aaa;margin-top:1px">${e.detail}</div>`:''}
+        </div>
+        <div style="font-size:.64rem;color:#bbb;flex-shrink:0;text-align:right">${dateStr}<br>${timeStr}</div>
+      </div>`;
+    });
+    html+='</div>';
+    if(activityLog.length>50) html+=`<div style="font-size:.66rem;color:#bbb;text-align:center;padding:6px">Showing 50 of ${activityLog.length} entries</div>`;
+    html+=`<div style="margin-top:10px;text-align:right"><button onclick="clearActivity()" style="background:none;border:1px solid #ddd;color:#aaa;padding:4px 10px;border-radius:5px;font-size:.66rem;cursor:pointer">Clear Log</button></div>`;
+  }
+  return html;
+}
+
+function clearActivity() {
+  if(!confirm('Clear all activity history on this device?')) return;
+  activityLog=[];
+  localStorage.setItem(ACTIVITY_KEY,JSON.stringify(activityLog));
+  buildSyncModal(); openModal('sync');
 }
 
 // ── MOBILE SHEET ──────────────────────────────────────────────
@@ -1210,6 +1424,7 @@ function init() {
   geocodeCache=JSON.parse(localStorage.getItem(CACHE_KEY)||'{}');
   userEdits   =JSON.parse(localStorage.getItem(EDITS_KEY)||'{}');
   userAdded   =JSON.parse(localStorage.getItem(ADDED_KEY)||'[]');
+  activityLog =JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'[]');
 
   // Name selector
   const savedWho=localStorage.getItem('kh_who')||'';

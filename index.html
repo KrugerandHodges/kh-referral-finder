@@ -1252,9 +1252,11 @@ function buildSyncModal() {
         1 background check per open. Changes push automatically. Free tier: 10,000 req/month.
       </div>
     </div>
-    <div class="tab-pane" id="sync-activity-tab">
-      ${buildActivityHTML()}
+    <div class="tab-pane" id="sync-activity-tab" id="sync-act-pane">
     </div>`;
+  // Populate activity tab separately to avoid nested template literal issues
+  const actPane=document.getElementById('sync-activity-tab');
+  if(actPane) actPane.innerHTML=buildActivityHTML();
 }
 
 function switchSyncTab(id) {

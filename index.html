@@ -340,11 +340,10 @@ const ADDED_KEY = 'kh_added_v2';
 const HASH_KEY  = 'kh_hash_v1';
 const DRIVE_MI  = 15;
 const OH_BB     = '-84.82,38.40,-80.52,42.33';
-// Config loaded at startup from a public JSONBin bin — no keys in source code
-const CONFIG_BIN_ID = 'REPLACE_WITH_CONFIG_BIN_ID'; // filled in during setup
-let JB_KEY  = '';
-let JB_BIN  = '';
-let GEO_KEY = '';
+const JB_KEY  = '$2a$10$pdSAPOFaco4piBwBVqN7v.eQHVqEvU4Ah/NKrlAJZ3FHo7u/8A8Fm';
+const JB_BIN  = '69e0eb3caaba88219706eabb';
+const GEO_KEY = '79181d066eee389eea6e31088970aeea8378eec';
+
 const TYPE_COLORS = {
   Chiropractor:'#7f1712', Doctor:'#4d4d4d',
   'IME Doctor':'#a0360f', Attorney:'#b8860b'
@@ -1470,31 +1469,7 @@ function init() {
 
 window.addEventListener('resize',()=>map.invalidateSize(),{passive:true});
 
-async function loadConfig() {
-  // Fetch API keys from public config bin (no auth needed — bin is set to public)
-  try {
-    const r = await fetch(`https://api.jsonbin.io/v3/b/${CONFIG_BIN_ID}/latest`, {
-      headers: {'X-Bin-Meta': 'false'},
-      signal: AbortSignal.timeout(8000)
-    });
-    if (!r.ok) throw new Error('Config load failed: ' + r.status);
-    const d = await r.json();
-    const cfg = d.record || d;
-    JB_KEY  = cfg.jb_key  || '';
-    JB_BIN  = cfg.jb_bin  || '';
-    GEO_KEY = cfg.geo_key || '';
-    init();
-  } catch(e) {
-    // Show friendly error if config can't load
-    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;font-family:sans-serif;color:#7f1712;gap:12px;padding:20px;text-align:center">
-      <div style="font-size:2rem">⚠️</div>
-      <div style="font-size:1.1rem;font-weight:700">Could not load configuration</div>
-      <div style="font-size:.85rem;color:#666;max-width:400px">Check your internet connection and try refreshing. If the problem persists, contact Nicole.</div>
-      <button onclick="location.reload()" style="padding:10px 20px;background:#7f1712;color:#fff;border:none;border-radius:8px;font-size:.9rem;cursor:pointer;margin-top:8px">Retry</button>
-    </div>`;
-  }
-}
-loadConfig();
+init();
 </script>
 
 <!-- MESSAGE MODAL -->

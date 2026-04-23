@@ -74,6 +74,8 @@ body{font-family:'Segoe UI',Arial,sans-serif;color:#333;display:flex;flex-direct
 .type-btn{padding:5px 11px;border:2px solid #ddd;border-radius:16px;font-size:.7rem;font-weight:600;cursor:pointer;background:#fff;color:#555;white-space:nowrap;flex-shrink:0;min-height:34px;touch-action:manipulation;transition:all .15s}
 .type-btn.active{background:#7f1712;color:#fff;border-color:#7f1712}
 .type-btn:hover:not(.active){border-color:#7f1712;color:#7f1712}
+.kh-btn{border-color:#f9c423!important;color:#7a5500!important}
+.kh-btn.active{background:#f9c423!important;border-color:#f9c423!important;color:#333!important}
 #subfilter-wrap{margin-bottom:8px;display:none}
 #subfilter{width:100%;padding:7px 9px;border:2px solid #ddd;border-radius:6px;font-size:.78rem;outline:none;background:#fff;color:#333;min-height:38px}
 #ref-search-wrap{margin-bottom:8px;position:relative}
@@ -232,6 +234,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;color:#333;display:flex;flex-direct
     <div class="sync-dot idle" id="sync-dot"></div>
     <span id="total-count"></span>
     <button class="hdr-btn" id="add-btn" onclick="openModal('add')">+ Add Referral</button>
+    <button class="hdr-btn" id="team-btn" onclick="openTeamModal()" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35)">👥 Team</button>
     <button class="hdr-btn" id="sync-btn" onclick="openModal('sync')">
       ⚙ Sync<span id="sync-badge"></span>
     </button>
@@ -268,6 +271,12 @@ body{font-family:'Segoe UI',Arial,sans-serif;color:#333;display:flex;flex-direct
           <option>Scott</option><option>Stephanie</option>
         </select>
       </div>
+      <div id="kh-office-wrap" style="margin-bottom:9px;display:flex;align-items:center;gap:7px;background:#f3f0ff;border-radius:6px;padding:6px 9px;border:1px solid #f9c423">
+        <span style="font-size:.69rem;font-weight:700;color:#7f1712;white-space:nowrap">📍 K&H Office:</span>
+        <select id="kh-office-select" style="flex:1;border:none;background:transparent;font-size:.78rem;font-weight:600;color:#333;outline:none;cursor:pointer;padding:0">
+          <option value="">— or select an office —</option>
+        </select>
+      </div>
       <div class="ctrl-label">Filter by Type</div>
       <div class="type-btns">
         <button class="type-btn active" data-type="All">All</button>
@@ -276,6 +285,7 @@ body{font-family:'Segoe UI',Arial,sans-serif;color:#333;display:flex;flex-direct
         <button class="type-btn" data-type="IME Doctor">IME</button>
         <button class="type-btn" data-type="Attorney">Attorneys</button>
         <button class="type-btn" data-type="MT">💆 Has MT</button>
+        <button class="type-btn kh-btn" data-type="KH_ATT">⚖ K&H Attorneys</button>
       </div>
       <div id="subfilter-wrap">
         <div class="ctrl-label" id="subfilter-label">Specialty</div>
@@ -344,10 +354,46 @@ const JB_KEY  = '$2a$10$pdSAPOFaco4piBwBVqN7v.eQHVqEvU4Ah/NKrlAJZ3FHo7u/8A8Fm';
 const JB_BIN  = '69e0eb3caaba88219706eabb';
 const GEO_KEY = '79181d066eee389eea6e31088970aeea8378eec';
 
+const KH_STAFF = [
+  'Ashley','Brandi','Brooke','Hanien','Jessica','Josh',
+  'Kinsley','McKayla K','McKayla W','Micha','Nicole','Nils',
+  'Sam','Sarah','Savannah','Scott','Stephanie'
+];
+
 const TYPE_COLORS = {
   Chiropractor:'#7f1712', Doctor:'#4d4d4d',
   'IME Doctor':'#a0360f', Attorney:'#b8860b'
 };
+
+const KH_OFFICES = [
+  {id:'kh1', name:'Hamilton',            address:'220 S 3rd St',              city:'Hamilton',            state:'OH', zip:'45011'},
+  {id:'kh2', name:'Middletown',          address:'300 N Main St Ste 375',     city:'Middletown',          state:'OH', zip:'45042'},
+  {id:'kh3', name:'Eaton',              address:'111 S Barron St',            city:'Eaton',               state:'OH', zip:'45320'},
+  {id:'kh4', name:'Wilmington',         address:'21 N South St',              city:'Wilmington',          state:'OH', zip:'45177'},
+  {id:'kh5', name:'Circleville',        address:'203 S Scioto St',            city:'Circleville',         state:'OH', zip:'43113'},
+  {id:'kh6', name:'Urbana',            address:'115 West Court St',           city:'Urbana',              state:'OH', zip:'43078'},
+  {id:'kh7', name:'Xenia',             address:'45 E Main St Ste 106',        city:'Xenia',               state:'OH', zip:'45385'},
+  {id:'kh8', name:'Washington Court House', address:'106 S Main St',          city:'Washington Court House', state:'OH', zip:'43160'},
+  {id:'kh9', name:'Bellefontaine',     address:'139 W Columbus Ave Ste 304',  city:'Bellefontaine',       state:'OH', zip:'43311'},
+];
+
+// Attorney home addresses — stored here since JB_KEY is already in file
+// These are sensitive — do not share the source file outside the firm
+let KH_ATTORNEYS = [
+  {id:'att1', name:'Ashley Briscoe',   address:'8106 Brightside Drive', city:'Plain City',   state:'OH', zip:'43064', county:'Union'},
+  {id:'att2', name:'Bridget Woolum',   address:'106 Fiord Drive',       city:'Eaton',        state:'OH', zip:'45320', county:'Preble'},
+  {id:'att3', name:'Jessica Powell',   address:'3000 State Route 125',  city:'West Union',   state:'OH', zip:'45693', county:'Adams', manualLat:38.8012, manualLng:-83.5391},
+  {id:'att4', name:'Joshua Hodges',    address:'643 Dayton St',         city:'Hamilton',     state:'OH', zip:'45011', county:'Butler'},
+  {id:'att5', name:'Nils Herdelin',    address:'6937 Britton Ave',      city:'Cincinnati',   state:'OH', zip:'45227', county:'Hamilton'},
+  {id:'att6', name:'Scott Kruger',     address:'3081 Stahlheber Rd',    city:'Hamilton',     state:'OH', zip:'45013', county:'Butler'},
+];
+
+const KH_CACHE_KEY = 'kh_kh_geocache_v3'; // separate cache for offices + attorneys
+const TEAM_KEY        = 'kh_team_v1';
+const REMOVED_STAFF_KEY = 'kh_removed_staff_v1';
+let khGeoCache   = {};
+let teamMembers  = []; // dynamically added team members
+let removedStaff = new Set(); // names removed from KH_STAFF
 
 // ── STATE ─────────────────────────────────────────────────────
 let map, markerLayer, clientMarker;
@@ -397,6 +443,222 @@ function getAllData() {
 }
 
 // ── GEOCODING ─────────────────────────────────────────────────
+// ── TEAM MEMBERS ──────────────────────────────────────────────
+function loadTeamMembers() {
+  teamMembers = JSON.parse(localStorage.getItem(TEAM_KEY)||'[]');
+  applyTeamMembers();
+}
+
+function applyTeamMembers() {
+  // Add names to Searching As dropdown
+  const sel = document.getElementById('who-select');
+  if (!sel) return;
+  // Remove previously added dynamic options
+  [...sel.options].forEach(o => { if(o.dataset.dynamic) o.remove(); });
+  // Also remove any staff names that have been removed
+  [...sel.options].forEach(o => { if(removedStaff&&removedStaff.has(o.value)) o.remove(); });
+  // Sort team members alphabetically and insert
+  const sorted = [...teamMembers].sort((a,b) => a.firstName.localeCompare(b.firstName));
+  sorted.forEach(m => {
+    const exists = [...sel.options].some(o => o.value === m.firstName);
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = m.firstName + (m.lastName ? ' ' + m.lastName.charAt(0) : '');
+      opt.textContent = m.firstName + (m.lastName ? ' ' + m.lastName.charAt(0) : '');
+      opt.dataset.dynamic = '1';
+      sel.appendChild(opt);
+    }
+  });
+  // Re-sort all options alphabetically (keep blank first)
+  const blank = sel.options[0];
+  const opts = [...sel.options].slice(1).sort((a,b) => a.text.localeCompare(b.text));
+  while (sel.options.length > 1) sel.remove(1);
+  opts.forEach(o => sel.appendChild(o));
+
+  // Add PI attorneys to KH_ATTORNEYS (reset to base first to avoid dupes)
+  // Keep base attorneys (those with id starting 'att')
+  KH_ATTORNEYS = KH_ATTORNEYS.filter(a => a.id.startsWith('att'));
+  teamMembers.filter(m => m.isAttorney && m.attorneyType === 'Personal Injury').forEach(m => {
+    KH_ATTORNEYS.push({
+      id: 'tm_' + m.id,
+      name: m.firstName + ' ' + m.lastName,
+      address: m.address||'',
+      city: m.city||'',
+      state: m.state||'OH',
+      zip: m.zip||'',
+      county: m.county||''
+    });
+  });
+}
+
+async function saveTeamMember(member) {
+  teamMembers.push(member);
+  localStorage.setItem(TEAM_KEY, JSON.stringify(teamMembers));
+  applyTeamMembers();
+  // Geocode new attorney if needed
+  if (member.isAttorney && member.address) {
+    await geocodeKHItems();
+  }
+  // Push to JSONBin
+  pushToBin();
+}
+
+function removeStaffMember(name) {
+  if (!confirm('Remove ' + name + ' from the team list? They will no longer appear in Searching As.')) return;
+  removedStaff.add(name);
+  localStorage.setItem(REMOVED_STAFF_KEY, JSON.stringify([...removedStaff]));
+  // Remove from who-select dropdown
+  const sel = document.getElementById('who-select');
+  if (sel) [...sel.options].forEach(o => { if(o.value===name) o.remove(); });
+  buildManageTeamList();
+}
+
+function restoreStaffMember(name) {
+  removedStaff.delete(name);
+  localStorage.setItem(REMOVED_STAFF_KEY, JSON.stringify([...removedStaff]));
+  // Re-apply to dropdown
+  applyTeamMembers();
+  buildManageTeamList();
+}
+
+function deleteTeamMember(id) {
+  if (!confirm('Remove this team member?')) return;
+  teamMembers = teamMembers.filter(m => m.id !== id);
+  localStorage.setItem(TEAM_KEY, JSON.stringify(teamMembers));
+  applyTeamMembers();
+  pushToBin();
+  buildManageTeamList();
+}
+
+// ── K&H OFFICES + ATTORNEYS ──────────────────────────────────
+function khGeoKey(item) {
+  return (item.address+','+item.city+','+item.state).toLowerCase().replace(/\s+/g,' ').trim();
+}
+function getKHCoords(item) {
+  // Manual override takes priority (used for addresses that consistently geocode wrong)
+  if (item.manualLat && item.manualLng) return {lat:item.manualLat, lng:item.manualLng, formatted:item.address+', '+item.city+', '+item.state};
+  return khGeoCache[khGeoKey(item)] || null;
+}
+function buildKHAddr(item) {
+  // Include county in address for rural/ambiguous addresses to avoid
+  // geocoders placing them on the wrong segment of a named road
+  const parts = [item.address, item.city];
+  if (item.county) parts.push(item.county + ' County');
+  parts.push(item.state, item.zip||'');
+  return parts.filter(Boolean).join(', ');
+}
+
+async function geocodeKHItems() {
+  khGeoCache = JSON.parse(localStorage.getItem(KH_CACHE_KEY)||'{}');
+  const allItems = [...KH_OFFICES, ...KH_ATTORNEYS];
+  const todo = allItems.filter(item => !(khGeoKey(item) in khGeoCache));
+  for (const item of todo) {
+    khGeoCache[khGeoKey(item)] = await fetchGeo(buildKHAddr(item));
+    await sleep(400);
+  }
+  try{localStorage.setItem(KH_CACHE_KEY, JSON.stringify(khGeoCache));}catch{}
+  renderKHOffices();
+  populateOfficeDropdown();
+}
+
+let khOfficeMarkers = [];
+let khAttorneyMarkers = [];
+
+function renderKHOffices() {
+  // Remove old office markers
+  khOfficeMarkers.forEach(m => map.removeLayer(m));
+  khOfficeMarkers = [];
+  KH_OFFICES.forEach(office => {
+    const c = getKHCoords(office);
+    if (!c) return;
+    // Gold star pin
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
+      <ellipse cx="16" cy="38" rx="6" ry="2" fill="rgba(0,0,0,.2)"/>
+      <path d="M16 1C8 1 2 8 2 15C2 26 16 38 16 38C16 38 30 26 30 15C30 8 24 1 16 1Z" fill="#f9c423" stroke="#7f1712" stroke-width="2"/>
+      <text x="16" y="19" text-anchor="middle" dominant-baseline="middle" font-size="15" fill="#7f1712">★</text>
+    </svg>`;
+    const icon = L.divIcon({html:svg, className:'', iconSize:[32,40], iconAnchor:[16,38], popupAnchor:[0,-38]});
+    const m = L.marker([c.lat, c.lng], {icon, zIndexOffset:3000})
+      .bindPopup(`<div style="font-weight:700;color:#b8860b;font-size:.88rem">★ K&H ${office.name}</div><div style="margin-top:3px;font-size:.78rem;color:#444">${office.address}<br>${office.city}, ${office.state} ${office.zip}</div>`);
+    m.addTo(map);
+    khOfficeMarkers.push(m);
+  });
+}
+
+function renderKHAttorneys(searchPos) {
+  khAttorneyMarkers.forEach(m => markerLayer.removeLayer(m));
+  khAttorneyMarkers = [];
+  if (activeType !== 'KH_ATT' || !searchPos) return;
+  const withDist = KH_ATTORNEYS.map(att => {
+    const c = getKHCoords(att);
+    if (!c) return null;
+    return {att, c, dist: haverDist(searchPos.lat, searchPos.lng, c.lat, c.lng)};
+  }).filter(Boolean).sort((a,b) => a.dist - b.dist);
+  withDist.forEach((x, rank) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+      <ellipse cx="14" cy="34" rx="5" ry="1.8" fill="rgba(0,0,0,.2)"/>
+      <path d="M14 1C7 1 2 7 2 13C2 23 14 34 14 34C14 34 26 23 26 13C26 7 21 1 14 1Z" fill="#7f1712" stroke="white" stroke-width="2"/>
+      <circle cx="14" cy="13" r="7" fill="white" opacity=".92"/>
+      <text x="14" y="17.5" text-anchor="middle" dominant-baseline="middle" font-size="10" font-weight="800" fill="#7f1712" font-family="Arial">${rank+1}</text>
+    </svg>`;
+    const icon = L.divIcon({html:svg, className:'', iconSize:[28,36], iconAnchor:[14,34], popupAnchor:[0,-34]});
+    const m = L.marker([x.c.lat, x.c.lng], {icon, zIndexOffset:1000-rank})
+      .bindPopup(`<div class="popup-tag" style="background:#b8860b">K&H Attorney</div>
+        <div class="popup-name">${x.att.name}</div>
+        <div class="popup-row">📍 ${x.att.address}, ${x.att.city}, ${x.att.state}</div>
+        <div class="popup-row" style="color:#7f1712;font-weight:700">${x.dist.toFixed(1)} mi · ~${Math.round(x.dist/45*60)} min drive (est.)</div>`);
+    markerLayer.addLayer(m);
+    khAttorneyMarkers.push(m);
+  });
+  return withDist;
+}
+
+function renderKHAttorneyList(searchPos) {
+  const list = document.getElementById('results-list'); list.innerHTML='';
+  const withDist = KH_ATTORNEYS.map(att => {
+    const c = getKHCoords(att);
+    if (!c) return null;
+    return {att, dist: haverDist(searchPos.lat, searchPos.lng, c.lat, c.lng), c};
+  }).filter(Boolean).sort((a,b) => a.dist - b.dist);
+  document.getElementById('no-refs-msg').style.display = 'none';
+  document.getElementById('results-count').textContent = withDist.length + ' attorneys';
+  document.getElementById('results-label').textContent = 'K&H Attorneys';
+  document.getElementById('no-results').style.display = withDist.length===0?'block':'none';
+  withDist.forEach((x, rank) => {
+    const div = document.createElement('div');
+    div.className = 'result-item' + (rank===0?' r-nearest':rank<3?' r-top5':'');
+    const estMins = Math.round(x.dist / 45 * 60);
+    const driveStr = estMins < 60 ? `~${estMins} min drive` : `~${Math.floor(estMins/60)}h ${estMins%60}m drive`;
+    div.innerHTML = `
+      <div class="result-top" style="cursor:default">
+        <div class="result-rank ${rank===0?'':'gold'}">${rank+1}</div>
+        <div class="result-info">
+          <div class="result-name" style="color:#7f1712">⚖ ${x.att.name}</div>
+          <div class="result-doctor">${x.att.address}, ${x.att.city}, ${x.att.state}</div>
+          <div class="result-dist">${x.dist.toFixed(1)} mi · <span style="color:#888;font-weight:400">${driveStr} (est.)</span></div>
+        </div>
+      </div>`;
+    div.querySelector('.result-top').addEventListener('click', () => {
+      map.setView([x.c.lat, x.c.lng], 14);
+      markerLayer.eachLayer(m => { if(m.getLatLng&&m.getLatLng().lat===x.c.lat) m.openPopup(); });
+    });
+    list.appendChild(div);
+  });
+  return withDist;
+}
+
+function populateOfficeDropdown() {
+  const sel = document.getElementById('kh-office-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— or select an office —</option>';
+  KH_OFFICES.forEach(office => {
+    const opt = document.createElement('option');
+    opt.value = office.id;
+    opt.textContent = 'K&H ' + office.name;
+    sel.appendChild(opt);
+  });
+}
+
 function geoKey(r) {
   return ((r.address||'')+','+(r.city||'')+','+(r.state||'OH')).toLowerCase().replace(/\s+/g,' ').trim();
 }
@@ -564,6 +826,11 @@ async function pullFromBin() {
     const d=await r.json(), rec=d.record||d;
     // Merge edits (remote wins on conflict)
     userEdits={...userEdits,...(rec.edits||{})};
+    // Merge team members
+    const remoteTeam=rec.team||[];
+    remoteTeam.forEach(rm=>{ if(!teamMembers.some(lm=>lm.id===rm.id)) teamMembers.push(rm); });
+    localStorage.setItem(TEAM_KEY,JSON.stringify(teamMembers));
+    applyTeamMembers();
     // Merge added referrals by ID — keeps local ones not on remote, adds remote ones not local
     const remoteAdded=rec.added||[];
     const localIds=new Set(userAdded.map(x=>x.id));
@@ -595,7 +862,7 @@ async function pullFromBin() {
 async function pushToBin() {
   setSyncDot('syncing');
   try {
-    const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JB_KEY},body:JSON.stringify({edits:userEdits,added:userAdded})});
+    const r=await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}`,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':JB_KEY},body:JSON.stringify({edits:userEdits,added:userAdded,team:teamMembers})});
     if (!r.ok) throw new Error(r.status);
     const hash=simpleHash({edits:userEdits,added:userAdded});
     localStorage.setItem(HASH_KEY,hash);
@@ -644,7 +911,7 @@ async function pushActivityToBin() {
     await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN}`,{
       method:'PUT',
       headers:{'Content-Type':'application/json','X-Master-Key':JB_KEY},
-      body:JSON.stringify({edits:userEdits, added:userAdded, activity:merged})
+      body:JSON.stringify({edits:userEdits, added:userAdded, activity:merged, team:teamMembers})
     });
     // Update local copy with merged
     activityLog=merged;
@@ -797,15 +1064,32 @@ function popMT(recId) {
 
 function renderMap() {
   markerLayer.clearLayers();
-  getFiltered().forEach(x=>{
-    if (refSearch&&!matchSearch(x.r)) return;
-    const m=makeMarker(x.r,x.i); if(m) markerLayer.addLayer(m);
-  });
+  khAttorneyMarkers = [];
+  if (activeType === 'KH_ATT') {
+    if (clientPos) renderKHAttorneys(clientPos);
+  } else {
+    getFiltered().forEach(x=>{
+      if (refSearch&&!matchSearch(x.r)) return;
+      const m=makeMarker(x.r,x.i); if(m) markerLayer.addLayer(m);
+    });
+  }
   updateCount();
 }
 
 // ── RENDER LIST ───────────────────────────────────────────────
 function renderList() {
+  if (activeType === 'KH_ATT') {
+    if (clientPos) renderKHAttorneyList(clientPos);
+    else {
+      const list = document.getElementById('results-list'); list.innerHTML='';
+      document.getElementById('results-count').textContent='';
+      document.getElementById('results-label').textContent='K&H Attorneys';
+      const div=document.createElement('div');div.style='padding:16px 12px;color:#888;font-size:.8rem';
+      div.textContent='Search an address or select a K&H office above to find the closest attorney.';
+      list.appendChild(div);
+    }
+    return;
+  }
   const list=document.getElementById('results-list'); list.innerHTML='';
   let items=getFiltered();
   if (refSearch) items=items.filter(x=>matchSearch(x.r));
@@ -979,14 +1263,19 @@ function rerunClosest() {
     const c=getCoords(x.r); if(!c) return null;
     return {i:x.i,r:x.r,dist:haverDist(clientPos.lat,clientPos.lng,c.lat,c.lng)};
   }).filter(Boolean).sort((a,b)=>a.dist-b.dist);
-  document.getElementById('no-refs-msg').style.display=(!withDist.length||withDist[0].dist>DRIVE_MI)?'block':'none';
+  document.getElementById('no-refs-msg').style.display=(activeType!=='KH_ATT'&&(!withDist.length||withDist[0].dist>DRIVE_MI))?'block':'none';
   top10=withDist.slice(0,10).map(x=>x.i);
   if(withDist.length) {
     const bounds=L.latLngBounds([[clientPos.lat,clientPos.lng]]);
     top10.slice(0,5).forEach(i=>{const c=getCoords(getAllData()[i]);if(c)bounds.extend([c.lat,c.lng]);});
     map.fitBounds(bounds.pad(0.12));
   }
-  renderMap(); renderList(); buildMessage(withDist.slice(0,10));
+  if (activeType === 'KH_ATT') {
+    renderMap();
+    renderKHAttorneyList(clientPos);
+  } else {
+    renderMap(); renderList(); buildMessage(withDist.slice(0,10));
+  }
 }
 
 // ── MESSAGE ───────────────────────────────────────────────────
@@ -1058,6 +1347,23 @@ async function copyMessage() {
 
 // ── MODAL SYSTEM ──────────────────────────────────────────────
 let currentModal='';
+function openTeamModal() {
+  const st=document.getElementById('tm-status');
+  if(st) st.textContent='';
+  // Reset form
+  ['tm-first','tm-last','tm-address','tm-city','tm-zip','tm-county'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const att=document.getElementById('tm-is-att');if(att)att.checked=false;
+  const attType=document.getElementById('tm-att-type');if(attType)attType.value='';
+  toggleAttorneyFields();
+  buildManageTeamList();
+  document.getElementById('team-modal-overlay').classList.add('open');
+}
+function closeTeamModal() {
+  document.getElementById('team-modal-overlay').classList.remove('open');
+}
+function closeTeamModalOutside(e) {
+  if(e.target.id==='team-modal-overlay') closeTeamModal();
+}
 function openModal(which) {
   currentModal=which;
   document.getElementById('modal-overlay').classList.add('open');
@@ -1072,7 +1378,7 @@ function buildAddModal() {
   document.getElementById('modal-title').textContent='Add Referral';
   document.getElementById('modal-body').innerHTML=`
     <div class="modal-tabs">
-      <div class="modal-tab active" onclick="switchTab('add-tab','add-tab')">Add New</div>
+      <div class="modal-tab active" onclick="switchTab('add-tab','add-tab')">Add Referral</div>
       <div class="modal-tab" onclick="switchTab('manage-tab','add-tab')">Manage Added</div>
     </div>
     <div class="tab-pane active" id="add-tab">
@@ -1118,8 +1424,50 @@ function buildAddModal() {
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid #eee">
         <button class="btn-secondary" style="width:100%" onclick="exportCSV()">⬇ Export CSV</button>
       </div>
+    <div class="tab-pane" id="team-tab" style="padding:4px 0">
+      <div style="font-size:.72rem;font-weight:700;color:#7f1712;margin-bottom:10px">Add Team Member</div>
+      <div class="form-grid">
+        <div class="fg"><label>First Name <span class="req">*</span></label><input id="tm-first" type="text" placeholder="First name"/></div>
+        <div class="fg"><label>Last Name <span class="req">*</span></label><input id="tm-last" type="text" placeholder="Last name"/></div>
+        <div class="fg full">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.8rem;font-weight:400;color:#333">
+            <input type="checkbox" id="tm-is-att" style="accent-color:#7f1712;width:16px;height:16px" onchange="toggleAttorneyFields()">
+            This person is an attorney
+          </label>
+        </div>
+        <div class="fg full" id="tm-att-fields" style="display:none">
+          <div class="form-grid">
+            <div class="fg full"><label>Attorney Type <span class="req">*</span></label>
+              <select id="tm-att-type">
+                <option value="">&#8212; Select &#8212;</option>
+                <option value="Personal Injury">Personal Injury</option>
+                <option value="Criminal">Criminal</option>
+              </select>
+            </div>
+            <div class="fg full"><label>Home Street Address <span class="req">*</span></label><input id="tm-address" type="text" placeholder="123 Main St"/></div>
+            <div class="fg"><label>City <span class="req">*</span></label><input id="tm-city" type="text"/></div>
+            <div class="fg"><label>State</label><input id="tm-state" type="text" value="OH" maxlength="2"/></div>
+            <div class="fg"><label>Zip</label><input id="tm-zip" type="text" maxlength="5"/></div>
+            <div class="fg"><label>County</label><input id="tm-county" type="text" placeholder="e.g. Butler"/></div>
+          </div>
+          <div style="font-size:.68rem;color:#888;margin-top:4px;line-height:1.5">PI attorneys appear in the K&amp;H Attorneys filter. Home address used for distance calculations.</div>
+        </div>
+      </div>
+      <div class="form-status" id="tm-status"></div>
+      <div class="form-actions">
+        <button class="btn-secondary" onclick="closeTeamModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitTeamMember()">Add Team Member</button>
+      </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee">
+        <div style="font-size:.72rem;font-weight:700;color:#7f1712;margin-bottom:8px">Current Team Members</div>
+        <div id="team-member-list"></div>
+      </div>
     </div>`;
   addDoctorRow(); // start with one empty doctor row
+  // Ensure add-tab is visible (belt-and-suspenders with CSS class)
+  const addTabEl=document.getElementById('add-tab');
+  if(addTabEl) addTabEl.style.display='block';
+  // Team tab content is built dynamically when tab is clicked
   // Show massage field only when Chiropractor is checked
   setTimeout(()=>{
     document.querySelectorAll('#f-types input[type=checkbox]').forEach(cb=>{
@@ -1132,12 +1480,14 @@ function buildAddModal() {
   },50);
 }
 function switchTab(showId,parentId) {
-  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  // Explicitly set display — don't rely on CSS class toggling
+  document.querySelectorAll('.tab-pane').forEach(p=>{ p.classList.remove('active'); p.style.display='none'; });
   document.querySelectorAll('.modal-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById(showId).classList.add('active');
-  const tabs=document.querySelectorAll('.modal-tab');
-  tabs.forEach(t=>{ if(t.getAttribute('onclick')&&t.getAttribute('onclick').includes(showId)) t.classList.add('active'); });
+  const target=document.getElementById(showId);
+  if(target){ target.classList.add('active'); target.style.display='block'; }
+  document.querySelectorAll('.modal-tab').forEach(t=>{ if(t.getAttribute('onclick')&&t.getAttribute('onclick').includes(showId)) t.classList.add('active'); });
   if(showId==='manage-tab') buildManageList();
+  if(showId==='team-tab') buildManageTeamList();
 }
 function addDoctorRow() {
   const cont=document.getElementById('doctor-rows');
@@ -1195,8 +1545,134 @@ async function submitReferral() {
   logActivity('added', getSender(), rec.office);
   const pushed=await pushToBin();
   if(coords) { st.textContent=pushed?'✓ Saved & synced!':'✓ Saved locally.'; st.className='form-status ok'; }
+  buildManageTeamList();
+  setTimeout(()=>closeTeamModal(),1500);
   buildSubfilter(); renderMap(); renderList(); updateCount();
   setTimeout(()=>{if(st.className.includes('ok'))buildAddModal();},2000);
+}
+
+function buildTeamTab() { buildManageTeamList(); }
+
+function toggleAttorneyFields() {
+  const isAtt = document.getElementById('tm-is-att').checked;
+  const fields = document.getElementById('tm-att-fields');
+  if (fields) fields.style.display = isAtt ? 'block' : 'none';
+}
+
+async function submitTeamMember() {
+  const first = (document.getElementById('tm-first').value||'').trim();
+  const last  = (document.getElementById('tm-last').value||'').trim();
+  const isAtt = document.getElementById('tm-is-att').checked;
+  const attType = isAtt ? (document.getElementById('tm-att-type').value||'') : '';
+  const addr  = isAtt ? (document.getElementById('tm-address').value||'').trim() : '';
+  const city  = isAtt ? (document.getElementById('tm-city').value||'').trim() : '';
+  const state = isAtt ? (document.getElementById('tm-state').value||'OH').trim() : '';
+  const zip   = isAtt ? (document.getElementById('tm-zip').value||'').trim() : '';
+  const county= isAtt ? (document.getElementById('tm-county').value||'').trim() : '';
+  const st    = document.getElementById('tm-status');
+
+  if (!first) { st.textContent='First name required.'; st.className='form-status err'; return; }
+  if (!last)  { st.textContent='Last name required.';  st.className='form-status err'; return; }
+  if (isAtt && !attType) { st.textContent='Attorney type required.'; st.className='form-status err'; return; }
+  if (isAtt && !addr)    { st.textContent='Home address required for attorneys.'; st.className='form-status err'; return; }
+  if (isAtt && !city)    { st.textContent='City required.'; st.className='form-status err'; return; }
+
+  // Check for duplicate
+  const displayName = first + ' ' + last.charAt(0);
+  if (teamMembers.some(m => m.firstName===first && m.lastName===last)) {
+    st.textContent='This person is already in the team list.'; st.className='form-status err'; return;
+  }
+
+  const member = {
+    id: 'tm_' + Date.now(),
+    firstName: first, lastName: last,
+    isAttorney: isAtt, attorneyType: attType,
+    address: addr, city, state, zip, county
+  };
+
+  st.textContent = isAtt ? 'Saving & geocoding...' : 'Saving...';
+  st.className = 'form-status';
+
+  await saveTeamMember(member);
+
+  st.textContent = '✓ ' + first + ' ' + last + ' added' + (isAtt && attType==='Personal Injury' ? ' — now visible in K&H Attorneys filter' : '');
+  st.className = 'form-status ok';
+  logActivity('team_add', getSender(), first + ' ' + last + (isAtt?' ('+attType+' Attorney)':''));
+
+  // Reset form
+  document.getElementById('tm-first').value='';
+  document.getElementById('tm-last').value='';
+  document.getElementById('tm-is-att').checked=false;
+  toggleAttorneyFields();
+  buildManageTeamList();
+}
+
+function buildManageTeamList() {
+  const cont = document.getElementById('team-member-list');
+  if (!cont) return;
+  cont.innerHTML='';
+
+  // Section 1: All Team Members (hardcoded + removable)
+  const staffHdr = document.createElement('div');
+  staffHdr.style='font-size:.64rem;font-weight:700;text-transform:uppercase;color:#4d4d4d;letter-spacing:.5px;padding:4px 0 6px;margin-top:2px';
+  staffHdr.textContent='Team Members';
+  cont.appendChild(staffHdr);
+  const attNames = new Set(KH_ATTORNEYS.filter(a=>a.id.startsWith('att')).map(a=>a.name.split(' ')[0]));
+  KH_STAFF.forEach(name => {
+    const isAtt = attNames.has(name);
+    const isRemoved = removedStaff && removedStaff.has(name);
+    const div = document.createElement('div');
+    div.className='mi';
+    div.style.opacity = isRemoved ? '0.45' : '1';
+    const badge = isAtt
+      ? '<div class="mi-type" style="background:#b8860b">PI Att</div>'
+      : '<div class="mi-type" style="background:#4d4d4d">Team Member</div>';
+    const btn = isRemoved
+      ? `<button class="mi-del" style="background:#4CAF50;color:#fff;border-color:#4CAF50" onclick="restoreStaffMember('${name}')">Restore</button>`
+      : `<button class="mi-del" onclick="removeStaffMember('${name}')">Remove</button>`;
+    div.innerHTML=`${badge}<div class="mi-info"><div class="mi-name">${name}${isRemoved?' <span style="color:#bbb;font-size:.65rem">(removed)</span>':''}</div></div>${btn}`;
+    cont.appendChild(div);
+  });
+
+  // Section 2: K&H Attorneys with home address detail
+  if (KH_ATTORNEYS.filter(a=>a.id.startsWith('att')).length) {
+    const attHdr = document.createElement('div');
+    attHdr.style='font-size:.64rem;font-weight:700;text-transform:uppercase;color:#b8860b;letter-spacing:.5px;padding:8px 0 6px;margin-top:4px;border-top:1px solid #eee';
+    attHdr.textContent='K&H PI Attorneys (for distance search)';
+    cont.appendChild(attHdr);
+    KH_ATTORNEYS.filter(a=>a.id.startsWith('att')).forEach(a => {
+      const div = document.createElement('div');
+      div.className='mi';
+      div.innerHTML=`<div class="mi-type" style="background:#b8860b">PI Att</div>
+        <div class="mi-info">
+          <div class="mi-name">${a.name}</div>
+          <div class="mi-meta">${[a.city,a.state].filter(Boolean).join(', ')}</div>
+        </div>`;
+      cont.appendChild(div);
+    });
+  }
+
+  // Section 3: Dynamically added team members
+  if (teamMembers.length) {
+    const addedHdr = document.createElement('div');
+    addedHdr.style='font-size:.64rem;font-weight:700;text-transform:uppercase;color:#7f1712;letter-spacing:.5px;padding:8px 0 6px;margin-top:4px;border-top:1px solid #eee';
+    addedHdr.textContent='Added via Team Form';
+    cont.appendChild(addedHdr);
+    [...teamMembers].sort((a,b)=>a.firstName.localeCompare(b.firstName)).forEach(m => {
+      const div = document.createElement('div');
+      div.className='mi';
+      const badge = m.isAttorney
+        ? `<div class="mi-type" style="background:${m.attorneyType==='Personal Injury'?'#b8860b':'#4d4d4d'}">${m.attorneyType==='Personal Injury'?'PI Att':'Crim Att'}</div>`
+        : '<div class="mi-type" style="background:#888">Staff</div>';
+      div.innerHTML=`${badge}
+        <div class="mi-info">
+          <div class="mi-name">${m.firstName} ${m.lastName}</div>
+          ${m.isAttorney&&m.city?`<div class="mi-meta">${m.city}, ${m.state}</div>`:''}
+        </div>
+        <button class="mi-del" onclick="deleteTeamMember('${m.id}')">Remove</button>`;
+      cont.appendChild(div);
+    });
+  }
 }
 
 function buildManageList() {
@@ -1289,11 +1765,11 @@ function buildActivityHTML() {
 
   // Action labels
   const actionLabel={
-    pull:'Pulled changes', added:'Added referral', search:'Searched address',
+    pull:'Pulled changes', added:'Added referral', search:'Searched address', team_add:'Added team member',
     preferred:'Toggled preferred', massage:'Toggled massage', note:'Saved note'
   };
   const actionColor={
-    pull:'#1a73e8', added:'#4CAF50', search:'#7f1712',
+    pull:'#1a73e8', added:'#4CAF50', search:'#7f1712', team_add:'#9c27b0',
     preferred:'#f9c423', massage:'#e91e8c', note:'#888'
   };
 
@@ -1426,6 +1902,8 @@ function init() {
   userEdits   =JSON.parse(localStorage.getItem(EDITS_KEY)||'{}');
   userAdded   =JSON.parse(localStorage.getItem(ADDED_KEY)||'[]');
   activityLog =JSON.parse(localStorage.getItem(ACTIVITY_KEY)||'[]');
+  loadTeamMembers();
+  removedStaff = new Set(JSON.parse(localStorage.getItem(REMOVED_STAFF_KEY)||'[]'));
 
   // Name selector
   const savedWho=localStorage.getItem('kh_who')||'';
@@ -1440,6 +1918,9 @@ function init() {
       btn.classList.add('active'); activeType=btn.dataset.type; activeSub='';
       buildSubfilter(); renderMap(); renderList();
       if(clientPos) rerunClosest();
+      // Show/hide office selector hint for K&H attorney mode
+      const offWrap = document.getElementById('kh-office-wrap');
+      if (offWrap) offWrap.style.borderColor = activeType==='KH_ATT'?'#7f1712':'#b8860b';
       if(isMobile()&&document.getElementById('panel').offsetHeight<=SNAP.mini+10) snapSheet(SNAP.half);
     });
   });
@@ -1466,7 +1947,25 @@ function init() {
   initSheet(); initResizer();
   updateCount();
   startGeocoding();
+  geocodeKHItems();
   setTimeout(checkForTeamChanges,1500);
+
+  // Office dropdown
+  const offSel = document.getElementById('kh-office-select');
+  if (offSel) {
+    offSel.addEventListener('change', function() {
+      if (!this.value) return;
+      const office = KH_OFFICES.find(o => o.id === this.value);
+      if (!office) return;
+      const c = getKHCoords(office);
+      if (!c) { alert('Office not geocoded yet — try again in a moment.'); return; }
+      const formatted = 'K&H ' + office.name + ' — ' + office.address + ', ' + office.city;
+      document.getElementById('addr-input').value = formatted;
+      document.getElementById('addr-status').textContent = '📍 ' + formatted;
+      document.getElementById('clear-btn').style.display = 'block';
+      findFromCoords({lat: c.lat, lng: c.lng, formatted});
+    });
+  }
 }
 
 window.addEventListener('resize',()=>map.invalidateSize(),{passive:true});
@@ -1494,6 +1993,57 @@ init();
         <textarea id="msg-box" placeholder="Search a client address first to generate the message..."></textarea>
       </div>
       <button id="copy-btn" onclick="copyMessage()">Copy Message</button>
+    </div>
+  </div>
+</div>
+
+<!-- TEAM MEMBERS MODAL — standalone, no tab switching -->
+<div class="modal-overlay" id="team-modal-overlay" onclick="closeTeamModalOutside(event)" style="z-index:10000">
+  <div class="modal" style="max-width:540px">
+    <div class="modal-header">
+      <h2>👥 Team Members</h2>
+      <button class="modal-close" onclick="closeTeamModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:.72rem;font-weight:700;color:#7f1712;margin-bottom:10px">Add Team Member</div>
+      <div class="form-grid">
+        <div class="fg"><label>First Name <span class="req">*</span></label><input id="tm-first" type="text" placeholder="First name"/></div>
+        <div class="fg"><label>Last Name <span class="req">*</span></label><input id="tm-last" type="text" placeholder="Last name"/></div>
+        <div class="fg full">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:.8rem;font-weight:400;color:#333">
+            <input type="checkbox" id="tm-is-att" style="accent-color:#7f1712;width:16px;height:16px" onchange="toggleAttorneyFields()">
+            This person is an attorney
+          </label>
+        </div>
+        <div class="fg full" id="tm-att-fields" style="display:none">
+          <div class="form-grid">
+            <div class="fg full"><label>Attorney Type <span class="req">*</span></label>
+              <select id="tm-att-type">
+                <option value="">&#8212; Select &#8212;</option>
+                <option value="Personal Injury">Personal Injury</option>
+                <option value="Criminal">Criminal</option>
+              </select>
+            </div>
+            <div class="fg full"><label>Home Street Address <span class="req">*</span></label>
+              <input id="tm-address" type="text" placeholder="123 Main St"/>
+            </div>
+            <div class="fg"><label>City <span class="req">*</span></label><input id="tm-city" type="text"/></div>
+            <div class="fg"><label>State</label><input id="tm-state" type="text" value="OH" maxlength="2"/></div>
+            <div class="fg"><label>Zip</label><input id="tm-zip" type="text" maxlength="5"/></div>
+            <div class="fg"><label>County</label><input id="tm-county" type="text" placeholder="e.g. Butler"/></div>
+          </div>
+          <div style="font-size:.68rem;color:#888;margin-top:4px;line-height:1.5">PI attorneys appear in the K&amp;H Attorneys filter. Home address used for distance calculations.</div>
+        </div>
+      </div>
+      <div class="form-status" id="tm-status"></div>
+      <div class="form-actions">
+        <button class="btn-secondary" onclick="closeTeamModal()">Cancel</button>
+        <button class="btn-primary" onclick="submitTeamMember()">Add Team Member</button>
+      </div>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee">
+        <div style="font-size:.72rem;font-weight:700;color:#7f1712;margin-bottom:8px">Current Team Members</div>
+        <div id="team-member-list"></div>
+      </div>
     </div>
   </div>
 </div>
